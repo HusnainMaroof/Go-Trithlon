@@ -1,0 +1,77 @@
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+
+model User {
+  id                     String              @id @default(uuid())
+  email                  String              @unique
+  name            String?
+  status                 UserStatus          @default(PENDING)
+  createdAt              DateTime            @default(now())
+  updatedAt              DateTime            @updatedAt
+  userToken              String?             @unique
+  google_id              String?             @unique
+  is_Onboard             Boolean             @default(false)
+ athleteProfile     AthleteProfile[]
+}
+
+
+enum UserStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+
+
+model AthleteProfile {
+  id        String @id @default(uuid())
+
+  userId    String @unique
+ displayName            String?
+  discipline Discipline
+
+  // performance (ONLY ONE ACTIVE FIELD SHOULD BE USED IN UI)
+  swimTime100m   Float?
+  cycleTime10km  Float?
+  runTime5km     Float?
+
+  experienceLevel ExperienceLevel
+
+  trainingDaysPerWeek Int?
+
+  competitionLevel CompetitionLevel?
+
+  locationCity String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+    user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+enum Discipline {
+  SWIMMER
+  CYCLIST
+  RUNNER
+}
+
+enum ExperienceLevel {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+}
+
+enum CompetitionLevel {
+  NONE
+  LOCAL
+  NATIONAL
+  PROFESSIONAL
+}
