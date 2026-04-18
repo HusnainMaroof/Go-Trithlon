@@ -16,7 +16,7 @@ const Page = async () => {
     redirect("/dashboard/home");
   }
 
-  return <div><ProfileSetup /></div>;
+  return <div><ProfileSetup /> </div>;
 };
 
 export default Page;

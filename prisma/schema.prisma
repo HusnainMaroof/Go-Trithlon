@@ -37,9 +37,8 @@ model AthleteProfile {
 
   userId    String @unique
  displayName            String?
-  discipline Discipline
+  discipline String[]
 
-  // performance (ONLY ONE ACTIVE FIELD SHOULD BE USED IN UI)
   swimTime100m   Float?
   cycleTime10km  Float?
   runTime5km     Float?
@@ -57,11 +56,6 @@ model AthleteProfile {
     user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
-enum Discipline {
-  SWIMMER
-  CYCLIST
-  RUNNER
-}
 
 enum ExperienceLevel {
   BEGINNER
