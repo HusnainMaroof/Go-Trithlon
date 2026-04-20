@@ -7,6 +7,7 @@ export interface AuthSuccess {
   success: boolean;
   authMessage: string;
   data: {
+    sessionId?: string;
     userToken: string;
     email: string;
     displayName: string;
@@ -24,13 +25,13 @@ export interface AuthError {
 export interface AuthPayload {
   autherror: AuthError;
   authsuccess: AuthSuccess;
-  sessionId?: string;
 }
 
 export const authFalse: AuthSuccess = {
   success: false,
   authMessage: "",
   data: {
+    sessionId: "",
     userToken: "",
     email: "",
     displayName: "",
@@ -41,6 +42,7 @@ export const authFalse: AuthSuccess = {
 };
 
 export type UserType = {
+  sessionId?: string;
   userToken: string;
   displayName: string;
   email: string;

@@ -21,13 +21,13 @@ import {
   Calendar,
   LucideIcon,
 } from "lucide-react";
-import { setprofileAction } from "../actions/dashboardAction";
 import {
   CompetitionLevel,
   Discipline,
   ExperienceLevel,
   setProfilePayload,
 } from "../type/dashboardtype";
+import { setprofileAction } from "../actions/dashboardAction";
 
 interface FormState {
   displayName: string;

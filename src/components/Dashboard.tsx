@@ -21,15 +21,10 @@ import {
   MapPin,
   Calendar,
   Search,
+  User,
 } from "lucide-react";
 import { useStateContext } from "../context/useContext";
 
-// --- MOCKED CONTEXT FOR PREVIEW ---
-// Uncomment this in your real app:
-// import { useStateContext } from "../context/useContext";
-
-
-// ----------------------------------
 
 // --- MOCK SUGGESTIONS ---
 const topMatches = [
@@ -119,6 +114,7 @@ export default function Dashboard() {
   const [selectedAthlete, setSelectedAthlete] = useState<
     (typeof topMatches)[0] | null
   >(null);
+  const [showNoTeamWarning, setShowNoTeamWarning] = useState(false);
 
   // Dynamically format user's pace based on what they provided
   const getFormattedPaces = () => {
@@ -157,12 +153,38 @@ export default function Dashboard() {
   const missingRoles = teamSummary.filter((member) => !member.filled);
   const isTeamComplete = missingRoles.length === 0;
 
+  // Helper for text formatting
+  const userRolesText = teamSummary
+    .filter((m) => m.isMe)
+    .map((m) => m.role)
+    .join(" and ");
+  const missingRolesText = missingRoles.map((r) => r.role).join(" and ");
+  const specializeText = userRolesText
+    ? `You specialize as a ${userRolesText}. `
+    : "";
+
+  // ADDED: Check if user has a team (Connect this to your actual DB logic later)
+  const userHasTeam = false;
+
+  // Handle Invite Logic
+  const handleInviteClick = () => {
+    if (!userHasTeam) {
+      setSelectedAthlete(null); // Hide the athlete profile popup
+      setShowNoTeamWarning(true); // Show the missing team warning
+    } else {
+      // Actual invite logic goes here
+      console.log(`Invited ${selectedAthlete?.name}!`);
+      setSelectedAthlete(null);
+    }
+  };
+
   // Helper for recruit modal
   const recruitDetails = getRoleDetails(recruitSlot);
   const RecruitIcon = recruitDetails.icon;
 
-  // Helper for profile modal
+  // Helper for profile modal - safely assigned for React rendering
   const profileDetails = getRoleDetails(selectedAthlete?.role || null);
+  const ProfileIcon = profileDetails.icon;
 
   return (
     <div className="min-h-screen bg-black text-zinc-300 font-sans selection:bg-blue-500/30 p-4 sm:p-6 lg:p-8 relative">
@@ -176,7 +198,7 @@ export default function Dashboard() {
             <p className="text-zinc-400 mt-1 text-sm">
               Welcome back,{" "}
               <span className="text-white font-medium">
-                {athlete?.displayName}
+                {athlete?.displayName || "Athlete"}
               </span>
               .
             </p>
@@ -194,7 +216,7 @@ export default function Dashboard() {
             <div className="flex items-center gap-2 text-sm">
               <Trophy className="w-4 h-4 text-zinc-500" />
               <span className="font-bold text-white capitalize">
-                {athlete?.experienceLevel.toLowerCase()}
+                {athlete?.experienceLevel?.toLowerCase() || "Pending"}
               </span>
             </div>
           </div>
@@ -205,24 +227,30 @@ export default function Dashboard() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           className={`relative overflow-hidden rounded-3xl border p-6 sm:p-8 flex flex-col md:flex-row items-center justify-between gap-6 ${
-            isTeamComplete
-              ? "bg-zinc-950 border-blue-500/30"
-              : "bg-zinc-950 border-amber-500/20"
+            !userHasTeam
+              ? "bg-zinc-950 border-amber-500/20"
+              : isTeamComplete
+                ? "bg-zinc-950 border-amber-500/20"
+                : "bg-zinc-950 border-amber-500/20"
           }`}
         >
           <div
-            className={`absolute top-0 right-0 w-64 h-64 rounded-full blur-[100px] pointer-events-none opacity-30 ${isTeamComplete ? "bg-blue-500" : "bg-amber-500"}`}
+            className={`absolute top-0 right-0 w-64 h-64 rounded-full blur-[100px] pointer-events-none opacity-30 ${!userHasTeam ? "bg-zinc-700/30" : isTeamComplete ? "bg-blue-500" : "bg-amber-500"}`}
           />
 
           <div className="relative z-10 flex items-center gap-5 text-center md:text-left flex-col md:flex-row">
             <div
               className={`w-16 h-16 rounded-full flex items-center justify-center border-4 ${
-                isTeamComplete
-                  ? "bg-blue-500/10 border-blue-500/20"
-                  : "bg-amber-500/10 border-amber-500/20"
+                !userHasTeam
+                  ? "bg-zinc-900 border-amber-500/20"
+                  : isTeamComplete
+                    ? "bg-blue-500/10 border-blue-500/20"
+                    : "bg-amber-500/10 border-amber-500/20"
               }`}
             >
-              {isTeamComplete ? (
+              {!userHasTeam ? (
+             <AlertCircle className="w-8 h-8 text-amber-400" />
+              ) : isTeamComplete ? (
                 <CheckCircle2 className="w-8 h-8 text-blue-400" />
               ) : (
                 <AlertCircle className="w-8 h-8 text-amber-400" />
@@ -231,37 +259,51 @@ export default function Dashboard() {
 
             <div>
               <h2 className="text-2xl font-extrabold text-white mb-1">
-                {isTeamComplete ? "Team Ready" : "Team Not Full"}
+                {!userHasTeam
+                  ? "No Team Yet"
+                  : isTeamComplete
+                    ? "Team Ready"
+                    : "Team Not Full"}
               </h2>
               <p className="text-zinc-400 text-sm max-w-md">
-                {isTeamComplete
-                  ? "Your team is full. You can now sign up for races."
-                  : `You need a ${missingRoles.map((r) => r.role).join(" and ")} to finish your team.`}
+                {!userHasTeam
+                  ? `${specializeText}Create a team to start recruiting a ${missingRolesText}.`
+                  : isTeamComplete
+                    ? "Your team is full. You can now sign up for races."
+                    : `You need a ${missingRolesText} to finish your team.`}
               </p>
             </div>
           </div>
 
           <button
             className={`relative z-10 w-full md:w-auto px-6 py-3 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 cursor-pointer ${
-              isTeamComplete
-                ? "bg-blue-500 text-white hover:bg-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.3)]"
-                : "bg-zinc-100 text-black hover:bg-white shadow-[0_0_15px_rgba(255,255,255,0.15)]"
+              !userHasTeam
+                ? "bg-zinc-100 text-black hover:bg-white shadow-[0_0_15px_rgba(255,255,255,0.15)]"
+                : isTeamComplete
+                  ? "bg-blue-500 text-white hover:bg-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.3)]"
+                  : "bg-zinc-100 text-black hover:bg-white shadow-[0_0_15px_rgba(255,255,255,0.15)]"
             }`}
           >
-            {isTeamComplete ? "Find Races" : "Find Teammates"}
+            {!userHasTeam
+              ? "Create Team"
+              : isTeamComplete
+                ? "Find Races"
+                : "Find Teammates"}
             <ArrowRight className="w-4 h-4" />
           </button>
         </motion.div>
 
-        {/* --- 3. YOUR TEAM (HORIZONTAL GRID) --- */}
+        {/* --- 3. YOUR TEAM SECTION --- */}
         <section className="space-y-4">
           <div className="flex items-center justify-between px-1">
             <h3 className="text-lg font-extrabold text-white flex items-center gap-2">
               <Users className="w-5 h-5 text-zinc-400" /> Your Team
             </h3>
-            <button className="text-xs font-bold text-zinc-500 hover:text-white uppercase tracking-wider cursor-pointer transition-colors">
-              Manage Team
-            </button>
+            {userHasTeam && (
+              <button className="text-xs font-bold text-zinc-500 hover:text-white uppercase tracking-wider cursor-pointer transition-colors">
+                Manage Team
+              </button>
+            )}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -276,7 +318,7 @@ export default function Dashboard() {
               >
                 <div className="flex justify-between items-start mb-4">
                   <div
-                    className={`px-2.5 py-1 rounded-md border text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 ${roleStyles[member.role as keyof typeof roleStyles]}`}
+                    className={`px-2.5 py-1 rounded-md border text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 ${roleStyles[member.role as keyof typeof roleStyles] || "bg-zinc-800 border-zinc-700 text-zinc-300"}`}
                   >
                     {member.role === "Swimmer" && <Waves className="w-3 h-3" />}
                     {member.role === "Cyclist" && <Bike className="w-3 h-3" />}
@@ -310,14 +352,20 @@ export default function Dashboard() {
                     </div>
                     <div>
                       <h4 className="font-bold text-white leading-tight">
-                        {member.name}
+                        {member.name || "Athlete"}
                       </h4>
                       <p className="text-xs text-zinc-500 mt-0.5">Joined</p>
                     </div>
                   </div>
                 ) : (
                   <button
-                    onClick={() => setRecruitSlot(member.role)}
+                    onClick={() => {
+                      if (!userHasTeam) {
+                        setShowNoTeamWarning(true);
+                      } else {
+                        setRecruitSlot(member.role);
+                      }
+                    }}
                     className="w-full flex items-center gap-3 group cursor-pointer text-left"
                   >
                     <div className="w-10 h-10 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center group-hover:bg-blue-500/10 group-hover:border-blue-500/30 transition-colors">
@@ -339,7 +387,7 @@ export default function Dashboard() {
         </section>
 
         {/* --- 4. SUGGESTED TEAMMATES --- */}
-        {!isTeamComplete && (
+        {(!userHasTeam || !isTeamComplete) && (
           <section className="space-y-4 pt-4 border-t border-zinc-900 pb-12">
             <div className="flex items-center justify-between px-1">
               <h3 className="text-lg font-extrabold text-white flex items-center gap-2">
@@ -426,7 +474,10 @@ export default function Dashboard() {
       <AnimatePresence>
         {/* 1. RECRUIT SLOT POPUP */}
         {recruitSlot && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center px-4">
+          <div
+            key="recruit-modal"
+            className="fixed inset-0 z-[100] flex items-center justify-center px-4"
+          >
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -462,13 +513,16 @@ export default function Dashboard() {
                 </div>
 
                 <h3 className="text-2xl font-black text-white mb-2 tracking-tight">
-                  Recruit a {recruitSlot}
+                  Recruit a {recruitSlot || "Teammate"}
                 </h3>
 
                 <p className="text-sm text-zinc-400 mb-8 px-2 leading-relaxed">
                   Your team is missing a{" "}
-                  <strong className="text-zinc-200">{recruitSlot}</strong>. Head
-                  to the directory to scout athletes and complete your trio.
+                  <strong className="text-zinc-200">
+                    {recruitSlot || "specialist"}
+                  </strong>
+                  . Head to the directory to scout athletes and complete your
+                  trio.
                 </p>
 
                 <div className="flex flex-col w-full gap-3">
@@ -476,7 +530,8 @@ export default function Dashboard() {
                     onClick={() => setRecruitSlot(null)}
                     className={`w-full py-3.5 bg-zinc-100 hover:bg-white text-black rounded-xl font-bold transition-all shadow-[0_0_20px_rgba(255,255,255,0.15)] flex items-center justify-center gap-2 cursor-pointer`}
                   >
-                    <Search className="w-4 h-4" /> Scout {recruitSlot}s
+                    <Search className="w-4 h-4" /> Scout{" "}
+                    {recruitSlot ? `${recruitSlot}s` : "Athletes"}
                   </button>
                   <button
                     onClick={() => setRecruitSlot(null)}
@@ -492,7 +547,10 @@ export default function Dashboard() {
 
         {/* 2. ATHLETE PROFILE POPUP */}
         {selectedAthlete && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center px-4">
+          <div
+            key="profile-modal"
+            className="fixed inset-0 z-[100] flex items-center justify-center px-4"
+          >
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -530,9 +588,9 @@ export default function Dashboard() {
 
                 <div className="flex items-center gap-2 mt-2 mb-6 text-sm text-zinc-400 font-medium">
                   <span
-                    className={`flex items-center gap-1 ${roleStyles[selectedAthlete.role as keyof typeof roleStyles].split(" ")[0]}`}
+                    className={`flex items-center gap-1 ${roleStyles[selectedAthlete.role as keyof typeof roleStyles]?.split(" ")[0] || "text-zinc-400"}`}
                   >
-                    <profileDetails.icon className="w-4 h-4" />
+                    <ProfileIcon className="w-4 h-4" />
                     {selectedAthlete.role}
                   </span>
                   <span className="w-1 h-1 rounded-full bg-zinc-700" />
@@ -577,10 +635,71 @@ export default function Dashboard() {
 
                 <div className="flex w-full gap-3">
                   <button
-                    onClick={() => setSelectedAthlete(null)}
+                    onClick={handleInviteClick}
                     className="w-full py-4 bg-zinc-100 hover:bg-white text-black rounded-xl font-bold transition-all shadow-[0_0_20px_rgba(255,255,255,0.15)] cursor-pointer flex items-center justify-center gap-2"
                   >
                     <UserPlus className="w-5 h-5" /> Invite to Team
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {/* 3. NO TEAM WARNING POPUP */}
+        {showNoTeamWarning && (
+          <div
+            key="warning-modal"
+            className="fixed inset-0 z-[100] flex items-center justify-center px-4"
+          >
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowNoTeamWarning(false)}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-sm bg-zinc-950 border border-zinc-800 rounded-3xl p-8 shadow-2xl z-10 overflow-hidden"
+            >
+              <div className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] bg-amber-500/10 rounded-full blur-[80px] pointer-events-none" />
+
+              <button
+                onClick={() => setShowNoTeamWarning(false)}
+                className="absolute top-5 right-5 p-2 text-zinc-500 hover:text-white bg-zinc-900/80 rounded-full transition-colors cursor-pointer z-20"
+              >
+                <X className="w-4 h-4" />
+              </button>
+
+              <div className="flex flex-col items-center text-center mt-2 relative z-10">
+                <div className="w-20 h-20 bg-amber-500/10 border border-amber-500/20 rounded-full flex items-center justify-center mb-5 shadow-inner">
+                  <AlertCircle className="w-10 h-10 text-amber-400" />
+                </div>
+
+                <h3 className="text-2xl font-black text-white mb-2 tracking-tight">
+                  No Team Found
+                </h3>
+
+                <p className="text-sm text-zinc-400 mb-8 px-2 leading-relaxed">
+                  You don't have a team yet. Please create your team first
+                  before sending invites to other athletes.
+                </p>
+
+                <div className="flex flex-col w-full gap-3">
+                  <button
+                    onClick={() => setShowNoTeamWarning(false)}
+                    className="w-full py-3.5 bg-blue-500 hover:bg-blue-400 text-white rounded-xl font-bold transition-all shadow-[0_0_20px_rgba(59,130,246,0.3)] cursor-pointer"
+                  >
+                    Go to My Team
+                  </button>
+                  <button
+                    onClick={() => setShowNoTeamWarning(false)}
+                    className="w-full py-3.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 text-zinc-300 rounded-xl font-bold transition-all cursor-pointer"
+                  >
+                    Cancel
                   </button>
                 </div>
               </div>

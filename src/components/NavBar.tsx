@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { useStateContext } from "../context/useContext";
+import { redirect } from "next/navigation";
 // import { useStateContext } from "../context/useContext"; // Uncomment for your real app
 
 // --- MOCKED CONTEXT FOR PREVIEW ---
@@ -69,9 +70,9 @@ const NavBar = () => {
   const isLoggedIn = Boolean(user?.userToken);
 
   const navLinks = [
-    { id: "dashboard", label: "Dashboard" },
-    { id: "athletes", label: "Athletes" },
-    { id: "my-team", label: "My Team" },
+    { id: "dashboard", label: "Dashboard", href: "/dashboard/home" },
+    { id: "athletes", label: "Athletes", href: "" },
+    { id: "my-team", label: "My Team", href: "/dashboard/myteam" },
   ];
 
   // Close dropdown when clicking outside
@@ -118,7 +119,6 @@ const NavBar = () => {
   };
 
   console.log("from nav"  , user);
-  
 
   return (
     <>
@@ -126,7 +126,12 @@ const NavBar = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             {/* Logo */}
-            <div className="flex items-center gap-3 cursor-pointer group">
+            <div
+              onClick={() => {
+                redirect("/");
+              }}
+              className="flex items-center gap-3 cursor-pointer group"
+            >
               <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500/10 to-cyan-400/10 border border-blue-500/20 flex items-center justify-center shadow-inner group-hover:border-blue-500/40 group-hover:shadow-blue-500/20 transition-all duration-300">
                 <Zap
                   className="text-blue-400 w-5 h-5 group-hover:scale-110 transition-transform duration-300"
@@ -145,7 +150,10 @@ const NavBar = () => {
                   {navLinks.map((tab) => (
                     <button
                       key={tab.id}
-                      onClick={() => setActiveTab(tab.id)}
+                      onClick={() => {
+                        setActiveTab(tab.id);
+                        redirect(tab.href);
+                      }}
                       className={`px-4 py-1.5 rounded-full text-sm font-bold transition-all border cursor-pointer ${
                         activeTab === tab.id
                           ? "bg-zinc-800 text-white border-zinc-700 shadow-sm"

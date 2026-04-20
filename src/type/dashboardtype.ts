@@ -5,10 +5,27 @@ export interface setProfilePayload {
   swimTime100m: number | null;
   cycleTime10km: number | null;
   runTime5km: number | null;
-  experienceLevel: ExperienceLevel  ;
+  experienceLevel: ExperienceLevel;
   trainingDaysPerWeek: number | null;
-  competitionLevel: CompetitionLevel ;
+  competitionLevel: CompetitionLevel;
 }
+
+// type/dashboardtype.ts
+
+export type createTeamPayload = {
+  teamName: string;
+};
+
+export type sendInvitesPayload = {
+  teamId: string;
+  toUserId: string;
+  role: "SWIMMER" | "CYCLIST" | "RUNNER";
+};
+
+export type acceptInvitePayload = {
+  inviteId: string;
+};
+
 export enum Discipline {
   SWIMMER = "SWIMMER",
   CYCLIST = "CYCLIST",

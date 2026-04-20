@@ -32,12 +32,12 @@ const parsed =
     ? JSON.parse(session)
     : session;
   return {
-    sessionId: auth_sessionId,
     autherror: { error: false, message: "" },
     authsuccess: {
       success: true,
       authMessage: "auth",
       data: {
+        sessionId : auth_sessionId,
         email: parsed?.email!,
         displayName: parsed?.displayName!,
         userToken: parsed?.userToken!,
