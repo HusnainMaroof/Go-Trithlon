@@ -58,7 +58,8 @@ model User {
   userToken  String?    @unique
   google_id  String?    @unique
   is_Onboard Boolean    @default(false)
-
+  inTeam Boolean    @default(false)
+profileImage              String?   
   athleteProfile  AthleteProfile?
   ownedTeams      MyTeam[]
   teamMemberships MyTeamMember[]
@@ -74,7 +75,6 @@ model AthleteProfile {
   displayName String?
   locationCity String?
 
-  // ✅ array of disciplines user CAN perform
   disciplines Discipline[]
 
   // performance per discipline (only relevant ones filled)

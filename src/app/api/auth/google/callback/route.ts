@@ -70,6 +70,7 @@ export async function GET(req: Request) {
           userToken: googleUser.sub, // stable unique ID
           status: "ACTIVE",
           google_id: googleUser.sub,
+          profileImage : googleUser.picture,
         },
       });
     }
@@ -98,7 +99,7 @@ export async function GET(req: Request) {
       userToken: dbUser.userToken,
       email: dbUser.email,
       name: dbUser.name,
-
+      inTeam: dbUser.inTeam,
       isOnboard: dbUser.is_Onboard,
       profileImage: googleUser.picture,
       athleteData: athleteData || null,

@@ -12,14 +12,10 @@ import {
   Settings,
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
+import { redirect, usePathname } from "next/navigation";
+import Link from "next/link";
 import { useStateContext } from "../context/useContext";
-import { redirect } from "next/navigation";
-// import { useStateContext } from "../context/useContext"; // Uncomment for your real app
 
-// --- MOCKED CONTEXT FOR PREVIEW ---
-// Change `userToken` to "" to see the logged-out "Sign In" state
-
-// ----------------------------------
 
 // Helper component for robust profile image loading
 const ProfileAvatar = ({
@@ -64,14 +60,16 @@ const NavBar = () => {
   const { user, setShowLoginPopup } = useStateContext();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState("dashboard");
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Use Next.js pathname to dynamically highlight the active tab
+  const pathname = usePathname();
 
   const isLoggedIn = Boolean(user?.userToken);
 
   const navLinks = [
     { id: "dashboard", label: "Dashboard", href: "/dashboard/home" },
-    { id: "athletes", label: "Athletes", href: "" },
+    { id: "athletes", label: "Athletes", href: "/dashboard/athletes" },
     { id: "my-team", label: "My Team", href: "/dashboard/myteam" },
   ];
 
@@ -118,8 +116,6 @@ const NavBar = () => {
     },
   };
 
-  console.log("from nav"  , user);
-
   return (
     <>
       <nav className="sticky top-0 z-50 bg-zinc-950/80 backdrop-blur-md border-b border-zinc-800">
@@ -147,22 +143,24 @@ const NavBar = () => {
             {isLoggedIn && user?.isOnboard && (
               <div className="hidden md:block">
                 <div className="flex items-center space-x-1 border border-zinc-800 rounded-full p-1 bg-zinc-950 shadow-inner">
-                  {navLinks.map((tab) => (
-                    <button
-                      key={tab.id}
-                      onClick={() => {
-                        setActiveTab(tab.id);
-                        redirect(tab.href);
-                      }}
-                      className={`px-4 py-1.5 rounded-full text-sm font-bold transition-all border cursor-pointer ${
-                        activeTab === tab.id
-                          ? "bg-zinc-800 text-white border-zinc-700 shadow-sm"
-                          : "text-zinc-400 hover:text-white hover:bg-zinc-900 border-transparent"
-                      }`}
-                    >
-                      {tab.label}
-                    </button>
-                  ))}
+                  {navLinks.map((tab) => {
+                    // Check if current route matches tab href
+                    const isActive = pathname?.startsWith(tab.href);
+
+                    return (
+                      <Link key={tab.id} href={tab.href}>
+                        <button
+                          className={`px-4 py-1.5 rounded-full text-sm font-bold transition-all border cursor-pointer ${
+                            isActive
+                              ? "bg-zinc-800 text-white border-zinc-700 shadow-sm"
+                              : "text-zinc-400 hover:text-white hover:bg-zinc-900 border-transparent"
+                          }`}
+                        >
+                          {tab.label}
+                        </button>
+                      </Link>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -187,7 +185,8 @@ const NavBar = () => {
                         </span>
                         <span className="text-[10px] font-bold uppercase tracking-wider text-blue-400 flex items-center gap-1">
                           <Activity className="w-3 h-3" />
-                          {user?.athleteData?.discipline || "In Training"}
+                          {user?.athleteData?.discipline?.join(", ") ||
+                            "In Training"}
                         </span>
                       </div>
 
@@ -230,12 +229,16 @@ const NavBar = () => {
                           </div>
 
                           <div className="px-2 py-1 space-y-0.5">
-                            <button className="group flex items-center gap-3 w-full px-3 py-2.5 text-sm font-bold text-zinc-300 hover:text-white hover:bg-zinc-900 rounded-xl transition-all cursor-pointer">
-                              <User className="w-4 h-4 text-zinc-400 group-hover:text-blue-400 transition-colors" />
-                              <span className="transform transition-transform duration-200 group-hover:translate-x-1">
-                                View Profile
-                              </span>
-                            </button>
+                            <Link
+                              href={`/dashboard/athletes/athletesprofile/${user?.sessionId}`}
+                            >
+                              <button className="group flex items-center gap-3 w-full px-3 py-2.5 text-sm font-bold text-zinc-300 hover:text-white hover:bg-zinc-900 rounded-xl transition-all cursor-pointer">
+                                <User className="w-4 h-4 text-zinc-400 group-hover:text-blue-400 transition-colors" />
+                                <span className="transform transition-transform duration-200 group-hover:translate-x-1">
+                                  View Profile
+                                </span>
+                              </button>
+                            </Link>
                             <button className="group flex items-center gap-3 w-full px-3 py-2.5 text-sm font-bold text-zinc-300 hover:text-white hover:bg-zinc-900 rounded-xl transition-all cursor-pointer">
                               <Settings className="w-4 h-4 text-zinc-400 group-hover:text-zinc-200 transition-colors" />
                               <span className="transform transition-transform duration-200 group-hover:translate-x-1">
@@ -257,7 +260,7 @@ const NavBar = () => {
                     </AnimatePresence>
                   </div>
 
-                  {/* Mobile menu button (Only show hamburger if logged in) */}
+                  {/* Mobile menu button */}
                   <div className="md:hidden flex items-center">
                     <button
                       onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -272,7 +275,6 @@ const NavBar = () => {
                   </div>
                 </>
               ) : (
-                /* Sign In button shown when logged out */
                 <button
                   onClick={() => setShowLoginPopup(true)}
                   className="px-6 py-2 md:px-6 md:py-2.5 rounded-xl font-bold text-sm transition-all bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 text-zinc-200 hover:text-white shadow-sm whitespace-nowrap cursor-pointer hover:shadow-zinc-800/50"
@@ -296,7 +298,6 @@ const NavBar = () => {
             className="md:hidden bg-zinc-950 border-b border-zinc-800 overflow-hidden shadow-2xl"
           >
             <div className="px-4 py-5 space-y-5">
-              {/* Mobile User Profile Section */}
               {isLoggedIn && (
                 <div className="flex items-center gap-4 pb-5 border-b border-zinc-800/60">
                   <ProfileAvatar
@@ -314,29 +315,32 @@ const NavBar = () => {
                 </div>
               )}
 
-              {/* Mobile Nav Links & Dropdown Actions combined */}
               {user?.isOnboard && (
                 <div className="space-y-1.5">
-                  {navLinks.map((tab) => (
-                    <button
-                      key={tab.id}
-                      onClick={() => {
-                        setActiveTab(tab.id);
-                        setMobileMenuOpen(false);
-                      }}
-                      className={`block w-full text-left px-4 py-3.5 rounded-xl text-base font-bold transition-colors border cursor-pointer ${
-                        activeTab === tab.id
-                          ? "bg-zinc-900 text-white border-zinc-800 shadow-sm"
-                          : "text-zinc-400 hover:bg-zinc-900/50 hover:text-white border-transparent"
-                      }`}
-                    >
-                      {tab.label}
-                    </button>
-                  ))}
+                  {navLinks.map((tab) => {
+                    const isActive = pathname?.startsWith(tab.href);
+
+                    return (
+                      <Link
+                        key={tab.id}
+                        href={tab.href}
+                        onClick={() => setMobileMenuOpen(false)}
+                      >
+                        <button
+                          className={`block w-full text-left px-4 py-3.5 rounded-xl text-base font-bold transition-colors border cursor-pointer ${
+                            isActive
+                              ? "bg-zinc-900 text-white border-zinc-800 shadow-sm"
+                              : "text-zinc-400 hover:bg-zinc-900/50 hover:text-white border-transparent"
+                          }`}
+                        >
+                          {tab.label}
+                        </button>
+                      </Link>
+                    );
+                  })}
 
                   <div className="h-px bg-zinc-800/60 my-4 w-full" />
 
-                  {/* Additional Mobile Actions */}
                   <button className="flex items-center gap-3 w-full text-left px-4 py-3.5 rounded-xl text-base font-bold text-zinc-400 hover:text-white hover:bg-zinc-900/50 border border-transparent transition-colors cursor-pointer">
                     <User className="w-5 h-5 text-zinc-500" /> View Profile
                   </button>

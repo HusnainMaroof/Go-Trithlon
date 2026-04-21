@@ -1,7 +1,7 @@
 export interface setProfilePayload {
   displayName: string;
   locationCity: string;
-  discipline: Discipline[];
+  disciplines: Discipline[];
   swimTime100m: number | null;
   cycleTime10km: number | null;
   runTime5km: number | null;
@@ -12,9 +12,16 @@ export interface setProfilePayload {
 
 // type/dashboardtype.ts
 
-export type createTeamPayload = {
-  teamName: string;
-};
+
+ 
+export type DisciplinePayload = "SWIMMER" | "CYCLIST" | "RUNNER";
+
+export type TeamActionPayload =
+  | { service: "GET_TEAM" }
+  | { service: "CREATE_TEAM"; teamName: string }
+  | { service: "CLAIM_SLOT"; role: Discipline; teamId: string }
+  | { service: "REMOVE_FROM_TEAM"; memberId: string; teamId: string }
+  | { service: "DELETE_TEAM"; teamId: string }; 
 
 export type sendInvitesPayload = {
   teamId: string;

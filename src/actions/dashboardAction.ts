@@ -4,19 +4,26 @@ import { getCurrentUser } from "../lib/auth";
 import { prisma } from "../lib/prisma";
 import setRedis from "../lib/redis";
 import {
+  claimSlotService,
+  createTeamService,
+  deleteTeamService,
+  getTeamService,
+  removeFromTeamService,
+} from "../service/team.service";
+import {
   acceptInvitePayload,
-  createTeamPayload,
   sendInvitesPayload,
   setProfilePayload,
+  TeamActionPayload,
 } from "../type/dashboardtype";
 import { catchErrors } from "../utlis/ErrorWrapper";
 import { getAuthSession } from "../utlis/helper";
 
-export type ActionResponse = {
+export type ActionResponse<T = any> = {
   success: boolean;
   error: boolean;
-  message?: any;
-  data: any;
+  message?: string;
+  data: T | null;
 };
 
 export const setprofileAction = catchErrors(
@@ -34,23 +41,24 @@ export const setprofileAction = catchErrors(
     const sessionData =
       typeof cachedUser === "string" ? JSON.parse(cachedUser) : cachedUser;
 
-    if (!sessionData || !sessionData.userId) {
+    if (!sessionData?.userId) {
       return {
-        success: false, // ✅ this was wrong before
+        success: false,
         error: true,
-        message: "no session data ",
-        data: {},
+        message: "Session not found",
+        data: null,
       };
     }
-
-    console.log("from setprofile action", payload);
 
     const createdProfile = await prisma.athleteProfile.create({
       data: {
         userId: sessionData.userId,
         displayName: payload.displayName ?? null,
         locationCity: payload.locationCity ?? null,
-        discipline: payload.discipline,
+
+        // IMPORTANT: normalize field name consistently
+        disciplines: payload.disciplines, // must always be array of enum
+
         experienceLevel: payload.experienceLevel,
         competitionLevel: payload.competitionLevel,
         trainingDaysPerWeek: payload.trainingDaysPerWeek,
@@ -60,17 +68,31 @@ export const setprofileAction = catchErrors(
       },
     });
 
-    // ✅ Update user properly (not updateMany)
     await prisma.user.update({
       where: { id: sessionData.userId },
       data: { is_Onboard: true },
     });
 
-    // ✅ Update session safely
+    // 🔥 IMPORTANT: normalize session shape (THIS FIXES YOUR CLAIM SLOT PROBLEMS)
     const updatedSessionData = {
       ...sessionData,
       isOnboard: true,
-      athleteData: createdProfile,
+
+      athleteData: {
+        id: createdProfile.id,
+        userId: createdProfile.userId,
+        displayName: createdProfile.displayName,
+        disciplines: createdProfile.disciplines, // ALWAYS THIS NAME
+        swimTime100m: createdProfile.swimTime100m,
+        cycleTime10km: createdProfile.cycleTime10km,
+        runTime5km: createdProfile.runTime5km,
+        experienceLevel: createdProfile.experienceLevel,
+        trainingDaysPerWeek: createdProfile.trainingDaysPerWeek,
+        competitionLevel: createdProfile.competitionLevel,
+        locationCity: createdProfile.locationCity,
+        createdAt: createdProfile.createdAt,
+        updatedAt: createdProfile.updatedAt,
+      },
     };
 
     const ttl = await setRedis.ttl(cacheKey);
@@ -84,78 +106,219 @@ export const setprofileAction = catchErrors(
     }
 
     return {
-      success: true, // ✅ this was wrong before
+      success: true,
       error: false,
-      message: "Profile updated successfully",
+      message: "Profile created successfully",
       data: updatedSessionData,
     };
   },
 );
 
-// ─────────────────────────────────────────────
-// CREATE TEAM
-// ─────────────────────────────────────────────
-export const createTeamAction = catchErrors(
+// // ─────────────────────────────────────────────
+// // CREATE TEAM
+// // ─────────────────────────────────────────────
+// export const createTeamAction = catchErrors(
+//   async (
+//     _prevState: ActionResponse,
+//     payload: createTeamPayload,
+//   ): Promise<ActionResponse> => {
+//     const getFromUser = await getCurrentUser();
+//     const sessionId = getFromUser.authsuccess.data.sessionId;
+
+//     const userData = await getAuthSession({ sessionId });
+//     if (!userData?.data)
+//       return {
+//         success: false,
+//         error: true,
+//         message: "No session data",
+//         data: null,
+//       };
+
+//     const userId = userData.data.userId;
+//     const userName = userData.data.name;
+//     const athleteData = userData.data.athleteData;
+
+//     if (!athleteData)
+//       return {
+//         success: false,
+//         error: true,
+//         message: "Complete your profile first",
+//         data: null,
+//       };
+
+//     // prevent user from owning multiple teams
+//     const existingTeam = await prisma.myTeam.findFirst({
+//       where: { ownerId: userId },
+//     });
+
+//     if (existingTeam)
+//       return {
+//         success: false,
+//         error: true,
+//         message: "You already have a team",
+//         data: existingTeam,
+//       };
+
+//     // create team
+//     const team = await prisma.myTeam.create({
+//       data: {
+//         name: payload.teamName,
+//         ownerId: userId,
+//       },
+//     });
+
+//     const cacheKey = `myteam:${userId}`;
+
+//     const expiresAt = 60 * 60 * 24 * 7;
+//     await setRedis.set(cacheKey, JSON.stringify(team), { ex: expiresAt });
+
+//     return {
+//       success: true,
+//       error: false,
+//       message: "Team created successfully",
+//       data: team,
+//     };
+//   },
+// );
+
+// // ─────────────────────────────────────────────
+// // GET My Team (with Redis cache)
+// // ─────────────────────────────────────────────
+
+// export const getMyTeamAction = catchErrors(
+//   async (
+//     _prevState: ActionResponse,
+//     _payload: unknown,
+//   ): Promise<ActionResponse> => {
+//     const getFromUser = await getCurrentUser();
+//     const sessionId = getFromUser.authsuccess.data.sessionId;
+
+//     const userData = await getAuthSession({ sessionId });
+//     if (!userData?.data)
+//       return {
+//         success: false,
+//         error: true,
+//         message: "No session data",
+//         data: null,
+//       };
+
+//     const userId = userData.data.userId;
+//     const cacheKey = `myteam:${userId}`;
+
+//     // ── 1. check cache ──
+//     const cached = await setRedis.get(cacheKey);
+//     if (cached) {
+//       const parsed = typeof cached === "string" ? JSON.parse(cached) : cached;
+//       return {
+//         success: true,
+//         error: false,
+//         data: parsed,
+//         message: "cached team found",
+//       };
+//     }
+
+//     // ── 2. fetch from DB ──
+// const myteam = await prisma.myTeam.findFirst({
+//       where: {
+//         ownerId: userId,
+//       },
+//       include: {
+//         members: {
+//           include: {
+//             user: {
+//               include: {
+//                 athleteProfile: true,
+//               },
+//             },
+//           },
+//         },
+//       },
+//     });
+
+//     console.log("from action ", myteam);
+
+//     if (!myteam)
+//       return {
+//         success: false,
+//         error: true,
+//         message: "no team",
+//         data: null,
+//       };
+
+//       // ── 4. Set Cache & Return ──
+//     const expiresAt = 60 * 60 * 24 * 7;
+//     await setRedis.set(cacheKey, JSON.stringify(myteam), { ex: expiresAt });
+
+//     return {
+//       success: true,
+//       error: false,
+//       data: myteam,
+//       message: "team found"
+//     };
+//   },
+// );
+
+// team action
+
+export const teamAction = catchErrors(
   async (
     _prevState: ActionResponse,
-    payload: createTeamPayload,
+    payload: TeamActionPayload,
   ): Promise<ActionResponse> => {
-    const getFromUser = await getCurrentUser();
-    const sessionId = getFromUser.authsuccess.data.sessionId;
+    if (!payload?.service) {
+      return {
+        success: false,
+        error: true,
+        message: "No service specified.",
+        data: null,
+      };
+    }
+
+    const getUser = await getCurrentUser();
+    const sessionId = getUser.authsuccess.data.sessionId;
 
     const userData = await getAuthSession({ sessionId });
-    if (!userData?.data)
+
+    if (!userData?.data) {
       return {
         success: false,
         error: true,
         message: "No session data",
         data: null,
       };
+    }
 
     const userId = userData.data.userId;
-    const userName = userData.data.name;
-    const athleteData = userData.data.athleteData;
 
-    if (!athleteData)
-      return {
-        success: false,
-        error: true,
-        message: "Complete your profile first",
-        data: null,
-      };
+    console.log("payloafkakjdjnvojd", userData?.data?.athleteData);
 
-    // prevent user from owning multiple teams
-    const existingTeam = await prisma.myTeam.findFirst({
-      where: { ownerId: userId },
-    });
+    switch (payload.service) {
+      case "GET_TEAM":
+        return getTeamService(userId);
 
-    if (existingTeam)
-      return {
-        success: false,
-        error: true,
-        message: "You already have a team",
-        data: existingTeam,
-      };
+      case "CREATE_TEAM":
+        return createTeamService(userId, payload.teamName); // ✅ FIXED
 
-    // create team
-    const team = await prisma.myTeam.create({
-      data: {
-        name: payload.teamName,
-        ownerId: userId,
-      },
-    });
+      case "CLAIM_SLOT":
+        return claimSlotService(
+          userId,
+          payload.teamId,
+          payload.role,
+          userData?.data?.athleteData,
+        );
 
-    const cacheKey = `myteam:${userId}`;
-
-    const expiresAt = 60 * 60 * 24 * 7;
-    await setRedis.set(cacheKey, JSON.stringify(team), { ex: expiresAt });
-
-    return {
-      success: true,
-      error: false,
-      message: "Team created successfully",
-      data: team,
-    };
+      case "REMOVE_FROM_TEAM":
+        return removeFromTeamService(userId, payload.memberId, payload.teamId);
+      case "DELETE_TEAM": // Handle deletion
+        return await deleteTeamService(userId, payload.teamId);
+      default:
+        return {
+          success: false,
+          error: true,
+          message: "Unknown service.",
+          data: null,
+        };
+    }
   },
 );
 
@@ -343,85 +506,6 @@ export const getInvitesAction = catchErrors(
     return { success: true, error: false, data: invites };
   },
 );
-// ─────────────────────────────────────────────
-// GET My Team (with Redis cache)
-// ─────────────────────────────────────────────
-export const getMyTeamAction = catchErrors(
-  async (
-    _prevState: ActionResponse,
-    _payload: unknown,
-  ): Promise<ActionResponse> => {
-    const getFromUser = await getCurrentUser();
-    const sessionId = getFromUser.authsuccess.data.sessionId;
-
-    const userData = await getAuthSession({ sessionId });
-    if (!userData?.data)
-      return {
-        success: false,
-        error: true,
-        message: "No session data",
-        data: null,
-      };
-
-    const userId = userData.data.userId;
-    const cacheKey = `myteam:${userId}`;
-
-    // ── 1. check cache ──
-    const cached = await setRedis.get(cacheKey);
-    if (cached) {
-      const parsed = typeof cached === "string" ? JSON.parse(cached) : cached;
-      return {
-        success: true,
-        error: false,
-        data: parsed,
-        message: "cached team found",
-      };
-    }
-
-    // ── 2. fetch from DB ──
-const myteam = await prisma.myTeam.findFirst({
-      where: {
-        ownerId: userId,
-      },
-      include: {
-        members: {
-          include: {
-            user: {
-              include: {
-                athleteProfile: true, 
-              },
-            },
-          },
-        },
-      },
-    });
-
-    console.log("from action ", myteam);
-
-    if (!myteam)
-      return {
-        success: false,
-        error: true, 
-        message: "no team",
-        data: null,
-      };
-
-
-
-
-
-      // ── 4. Set Cache & Return ──
-    const expiresAt = 60 * 60 * 24 * 7; 
-    await setRedis.set(cacheKey, JSON.stringify(myteam), { ex: expiresAt });
-
-    return { 
-      success: true, 
-      error: false, 
-      data: myteam, 
-      message: "team found" 
-    };
-  },
-);
 
 // ─────────────────────────────────────────────
 // ACCEPT INVITE
@@ -596,3 +680,133 @@ export const rejectInviteAction = catchErrors(
     };
   },
 );
+
+export const getAthleteDataAction = catchErrors(
+  async (
+    _prevState: ActionResponse,
+    userToken: string,
+  ): Promise<ActionResponse> => {
+    if (!userToken) {
+      return {
+        success: false,
+        error: true,
+        message: "User token is required to fetch data.",
+        data: null,
+      };
+    }
+
+    // 1. Check Redis cache first using the userToken as the sessionId identifier
+    const cacheKey = `auth_session:${userToken}`;
+    const cachedUser = await setRedis.get(cacheKey);
+
+    let sessionData = null;
+    if (cachedUser) {
+      sessionData =
+        typeof cachedUser === "string" ? JSON.parse(cachedUser) : cachedUser;
+    }
+
+    // 2. If session exists in cache and has athleteData, return it immediately
+    if (sessionData?.athleteData && sessionData.isOnboard) {
+      return {
+        success: true,
+        error: false,
+        message: "Athlete data retrieved from cache",
+        data: sessionData,
+      };
+    }
+
+    // 3. Fallback: If not in cache, resolve session via the database helper
+    const userData = await getAuthSession({ sessionId: userToken });
+
+    if (!userData?.data?.userId) {
+      return {
+        success: false,
+        error: true,
+        message: "Session invalid or expired.",
+        data: null,
+      };
+    }
+
+    // 4. Fetch the specific athlete profile record from Prisma
+    const athleteProfile = await prisma.athleteProfile.findUnique({
+      where: { userId: userData.data.userId },
+    });
+
+    if (!athleteProfile) {
+      return {
+        success: false,
+        error: true,
+        message: "Athlete profile not found. Please complete onboarding.",
+        data: null,
+      };
+    }
+
+    // 5. Return the database record
+    return {
+      success: true,
+      error: false,
+      message: "Athlete data retrieved from database",
+      data: athleteProfile,
+    };
+  },
+);
+export const getAllAthlete = catchErrors(async (): Promise<ActionResponse> => {
+  const cacheKey = "athletes:global:limit:100";
+
+  // 1️⃣ Try cache first
+  const cached = await setRedis.get(cacheKey);
+
+  const sessionData = typeof cached === "string" ? JSON.parse(cached) : cached;
+
+  if (cached) {
+    return {
+      success: true,
+      error: false,
+      message: "From cache",
+      data: sessionData,
+    };
+  }
+
+  // 2️⃣ Fetch from DB
+  const athletes = await prisma.athleteProfile.findMany({
+    take: 100,
+    include: {
+      user: {
+        select: {
+          email: true,
+          name: true,
+          userToken: true,
+          inTeam: true,
+          is_Onboard: true,
+          profileImage: true,
+        },
+      },
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
+
+  // 3️⃣ Transform data
+  const formatted = athletes.map(({ user, ...a }) => ({
+    userToken: user.userToken,
+    email: user.email,
+    name: user.name,
+    inTeam: user.inTeam,
+    isOnboard: user.is_Onboard,
+    profileImage: user.profileImage, // update when schema supports it
+
+    athleteData: a,
+  }));
+
+  // 4️⃣ Store in Redis
+  await setRedis.set(cacheKey, JSON.stringify(formatted), { ex: 6000 });
+
+  // 5️⃣ Return response
+  return {
+    success: true,
+    error: false,
+    message: "From DB",
+    data: formatted,
+  };
+});

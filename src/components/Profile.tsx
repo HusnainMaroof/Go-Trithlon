@@ -85,12 +85,12 @@ export default function ProfileSetup() {
   // Drive UI off action response (redirect on success, surface error on failure)
   useEffect(() => {
     if (state.success) {
-      // TODO: replace with router.push("/dashboard") or similar
+      window.location.reload();
       console.info("Profile saved — redirect here");
     }
     if (state.error) {
       // TODO: replace with a toast / inline error component
-      console.error("Profile save failed:", state.message);
+      console.log("Profile save failed:", state.message);
     }
   }, [state]);
 
@@ -181,7 +181,7 @@ export default function ProfileSetup() {
     const finalPayload: setProfilePayload = {
       displayName: data.displayName,
       locationCity: data.locationCity,
-      discipline: data.discipline,
+      disciplines: data.discipline,
       swimTime100m: data.swimTime100m ? parseFloat(data.swimTime100m) : null,
       cycleTime10km: data.cycleTime10km ? parseFloat(data.cycleTime10km) : null,
       runTime5km: data.runTime5km ? parseFloat(data.runTime5km) : null,
@@ -203,7 +203,7 @@ export default function ProfileSetup() {
 
   useEffect(() => {
     if (state.success && state.message === "Profile updated successfully") {
-      window.location.href="/dashboard/home"
+      window.location.href = "/dashboard/home";
     }
   }, [state]);
 
