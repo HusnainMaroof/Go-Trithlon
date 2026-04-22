@@ -16,7 +16,6 @@ import { redirect, usePathname } from "next/navigation";
 import Link from "next/link";
 import { useStateContext } from "../context/useContext";
 
-
 // Helper component for robust profile image loading
 const ProfileAvatar = ({
   src,
@@ -167,6 +166,20 @@ const NavBar = () => {
 
             {/* Right Side Actions: Profile OR Sign In */}
             <div className="flex items-center gap-4">
+              <div className="flex items-center space-x-1 border border-zinc-800 rounded-full p-1 bg-zinc-950 shadow-inner">
+                <Link key={0} href={`/dashboard/invites`}>
+                  <button
+                    className={`px-4 py-1.5 rounded-full text-sm font-bold transition-all border cursor-pointer 
+                    
+                         "bg-zinc-800 text-white border-zinc-700 shadow-sm"
+                      
+                    `}
+                  >
+                    My Invites
+                  </button>
+                </Link>
+              </div>
+
               {isLoggedIn ? (
                 <>
                   {/* Desktop Profile Dropdown */}

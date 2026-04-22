@@ -1,11 +1,13 @@
-// utils/actionWrapper.ts
+import colors from "colors";
+
 export const catchErrors =
   (fn: Function) =>
   async (...args: any[]) => {
     try {
       return await fn(...args);
     } catch (error) {
-      console.error("Global Action Error:", error);
+      console.error(colors.red("Global Action Error:"), error);
+
       return {
         success: false,
         error: true,

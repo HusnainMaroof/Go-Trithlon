@@ -10,21 +10,17 @@ export interface setProfilePayload {
   competitionLevel: CompetitionLevel;
 }
 
-// type/dashboardtype.ts
-
-
- 
-export type DisciplinePayload = "SWIMMER" | "CYCLIST" | "RUNNER";
+export type Discipline = "SWIMMER" | "CYCLIST" | "RUNNER";
 
 export type TeamActionPayload =
   | { service: "GET_TEAM" }
   | { service: "CREATE_TEAM"; teamName: string }
   | { service: "CLAIM_SLOT"; role: Discipline; teamId: string }
   | { service: "REMOVE_FROM_TEAM"; memberId: string; teamId: string }
-  | { service: "DELETE_TEAM"; teamId: string }; 
+  | { service: "DELETE_TEAM"; teamId: string };
+export type DisciplinePayload = "SWIMMER" | "CYCLIST" | "RUNNER";
 
 export type sendInvitesPayload = {
-  teamId: string;
   toUserId: string;
   role: "SWIMMER" | "CYCLIST" | "RUNNER";
 };
@@ -32,12 +28,6 @@ export type sendInvitesPayload = {
 export type acceptInvitePayload = {
   inviteId: string;
 };
-
-export enum Discipline {
-  SWIMMER = "SWIMMER",
-  CYCLIST = "CYCLIST",
-  RUNNER = "RUNNER",
-}
 
 export enum ExperienceLevel {
   BEGINNER = "BEGINNER",

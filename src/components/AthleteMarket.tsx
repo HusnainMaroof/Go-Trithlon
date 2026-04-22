@@ -29,6 +29,10 @@ import {
   Search,
 } from "lucide-react";
 import { getAllAthlete } from "../actions/dashboardAction";
+import { useStateContext } from "../context/useContext";
+import InviteAthleteModel from "./InviteAthleteModel";
+import Link from "next/link";
+import { redirect } from "next/navigation";
 
 // ─── TYPES & CONFIG ─────────────────────────────────────────────────────────
 
@@ -41,23 +45,44 @@ export type ActionResponse = {
   data: any | null;
 };
 
-const DISCIPLINE_CONFIG: Record<Discipline, any> = {
+// Flat athlete shape used throughout the component
+type FlatAthlete = {
+  id: string;
+  userId: string;
+  userToken: string;
+  email: string;
+  name: string;
+  displayName: string;
+  inTeam: boolean;
+  isOnboard: boolean;
+  profileImage: string | null;
+  locationCity: string | null;
+  disciplines: Discipline[];
+  swimTime100m: number | null;
+  cycleTime10km: number | null;
+  runTime5km: number | null;
+  experienceLevel: string | null;
+  trainingDaysPerWeek: number | null;
+  competitionLevel: string | null;
+};
+
+export const DISCIPLINE_CONFIG: Record<Discipline, any> = {
   SWIMMER: {
-    label: "Swim",
+    label: "SWIMMER",
     icon: Waves,
     color: "text-cyan-400",
     bg: "bg-cyan-400/10",
     border: "border-cyan-500/30",
   },
   CYCLIST: {
-    label: "Bike",
+    label: "CYCLIST",
     icon: Bike,
     color: "text-amber-400",
     bg: "bg-amber-400/10",
     border: "border-amber-500/30",
   },
   RUNNER: {
-    label: "Run",
+    label: "RUNNER",
     icon: Footprints,
     color: "text-emerald-400",
     bg: "bg-emerald-400/10",
@@ -67,8 +92,55 @@ const DISCIPLINE_CONFIG: Record<Discipline, any> = {
 
 const ALL_DISCIPLINES: Discipline[] = ["SWIMMER", "CYCLIST", "RUNNER"];
 
-// ─── MOCKS FOR PREVIEW ENVIRONMENT ──────────────────────────────────────────
+/**
+ * Normalize raw API response into a flat shape the component can use directly.
+ * The API returns { userToken, email, inTeam, profileImage, athleteData: { ... } }
+ * This merges athleteData up to the top level so every field is directly accessible.
+ */
+const flattenAthlete = (raw: any): FlatAthlete => {
+  const a = raw.athleteData ?? {};
 
+  // Priority: athleteData.displayName → user.name → email prefix → fallback
+  const resolvedName =
+    a.displayName?.trim() ||
+    raw.name?.trim() ||
+    raw.email?.split("@")[0] ||
+    "Athlete";
+
+  // Profile image: use Google photo if present, else null (card generates avatar)
+  const resolvedImage = raw.profileImage?.trim() || null;
+
+  return {
+    // identity
+    id: a.id ?? "",
+    userId: a.userId ?? "",
+    userToken: raw.userToken ?? "",
+    email: raw.email ?? "",
+    name: resolvedName,
+    displayName: resolvedName,
+
+    // status
+    inTeam: raw.inTeam ?? false,
+    isOnboard: raw.isOnboard ?? false,
+
+    // profile
+    profileImage: resolvedImage,
+    locationCity: a.locationCity ?? null,
+    disciplines: Array.isArray(a.disciplines) ? a.disciplines : [],
+
+    // performance
+    swimTime100m: a.swimTime100m ?? null,
+    cycleTime10km: a.cycleTime10km ?? null,
+    runTime5km: a.runTime5km ?? null,
+
+    // meta
+    experienceLevel: a.experienceLevel ?? null,
+    trainingDaysPerWeek: a.trainingDaysPerWeek ?? null,
+    competitionLevel: a.competitionLevel ?? null,
+  };
+};
+
+// ─── SHIMMER ────────────────────────────────────────────────────────────────
 
 const Shimmer = () => (
   <motion.div
@@ -78,7 +150,17 @@ const Shimmer = () => (
   />
 );
 
-const AthleteCard = ({ athlete, onInvite, onView }: any) => {
+// ─── ATHLETE CARD ────────────────────────────────────────────────────────────
+
+const AthleteCard = ({
+  athlete,
+  onInvite,
+  onView,
+}: {
+  athlete: FlatAthlete;
+  onInvite: (a: FlatAthlete) => void;
+  onView: (id: string) => void;
+}) => {
   const isUnavailable = athlete.inTeam;
 
   return (
@@ -103,11 +185,20 @@ const AthleteCard = ({ athlete, onInvite, onView }: any) => {
           <img
             src={
               athlete.profileImage ||
-              `https://ui-avatars.com/api/?name=${athlete.displayName || athlete.name}&background=18181b&color=fff`
+              `https://ui-avatars.com/api/?name=${encodeURIComponent(athlete.displayName)}&background=18181b&color=ffffff&size=128&bold=true`
             }
-            className={`w-14 h-14 rounded-2xl border border-zinc-700 object-cover relative z-10 transition-all duration-500 shadow-lg ${isUnavailable ? "grayscale opacity-70" : "grayscale group-hover:grayscale-0"}`}
-            alt={athlete.displayName || athlete.name}
-            onError={(e) => (e.currentTarget.style.display = "none")}
+            className={`w-14 h-14 rounded-full border border-zinc-700 object-cover relative z-10 transition-all duration-500 shadow-lg ${
+              isUnavailable
+                ? " opacity-70"
+                : "grayscale group-hover:grayscale-0"
+            }`}
+            alt={athlete.displayName}
+            onError={(e) => {
+              // fallback to generated avatar if image URL is broken
+              const target = e.currentTarget;
+              target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(athlete.displayName)}&background=18181b&color=ffffff&size=128&bold=true`;
+              target.onerror = null; // prevent infinite loop
+            }}
           />
           {!isUnavailable && (
             <div className="absolute -bottom-1 -right-1 bg-blue-500 rounded-lg p-0.5 border-2 border-[#0a0a0a] z-20 shadow-lg">
@@ -119,7 +210,7 @@ const AthleteCard = ({ athlete, onInvite, onView }: any) => {
         {/* Status Badges */}
         <div className="flex flex-col items-end gap-1.5">
           <div className="px-2 py-0.5 rounded-md bg-zinc-900 border border-zinc-800 text-[9px] font-black text-zinc-400 uppercase tracking-widest">
-            {athlete.experienceLevel}
+            {athlete.experienceLevel ?? "—"}
           </div>
           {isUnavailable ? (
             <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-red-500/10 border border-red-500/20">
@@ -142,7 +233,7 @@ const AthleteCard = ({ athlete, onInvite, onView }: any) => {
       {/* Info Row */}
       <div>
         <h3 className="text-lg font-bold text-white tracking-tight leading-none group-hover:text-blue-300 transition-colors truncate">
-          {athlete.displayName || athlete.name}
+          {athlete.displayName}
         </h3>
         <div className="flex items-center gap-1.5 mt-2">
           <MapPin className="w-3 h-3 text-zinc-500" />
@@ -154,7 +245,7 @@ const AthleteCard = ({ athlete, onInvite, onView }: any) => {
 
       {/* Disciplines */}
       <div className="flex flex-wrap gap-1.5">
-        {athlete?.disciplines?.map((d: Discipline) => {
+        {athlete.disciplines.map((d: Discipline) => {
           const cfg = DISCIPLINE_CONFIG[d];
           if (!cfg) return null;
           const Icon = cfg.icon;
@@ -188,8 +279,13 @@ const AthleteCard = ({ athlete, onInvite, onView }: any) => {
             </>
           )}
         </button>
+
         <button
-          onClick={() => onView(athlete.id)}
+          onClick={() =>
+            redirect(
+              `/dashboard/athletes/athletesprofile/${athlete?.userToken}`,
+            )
+          }
           className="flex items-center justify-center px-3.5 bg-zinc-900 border border-zinc-800 text-zinc-400 rounded-xl hover:text-white hover:border-zinc-600 hover:bg-zinc-800 transition-all shadow-md cursor-pointer"
         >
           <Eye className="w-4 h-4" />
@@ -209,27 +305,33 @@ const initialState: ActionResponse = {
 };
 
 export default function AthleteMarketplace() {
+  const { user } = useStateContext();
   const [state, dispatcher, isPending] = useActionState<ActionResponse>(
     getAllAthlete,
     initialState,
   );
 
   const [filter, setFilter] = useState<Discipline | "ALL">("ALL");
-  const [inviteTarget, setInviteTarget] = useState<any>(null);
+  const [inviteTarget, setInviteTarget] = useState<FlatAthlete | null>(null);
 
-  // Fetch data on mount
+  // Fetch on mount
   useEffect(() => {
     startTransition(() => {
       dispatcher();
     });
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const athletes = state.data || [];
+  // Flatten raw API data once, filter out the current logged-in user by userToken
+  const athletes: FlatAthlete[] = useMemo(() => {
+    if (!Array.isArray(state.data)) return [];
+    return state.data
+      .map(flattenAthlete)
+      .filter((a) => a.userToken !== user?.userToken);
+  }, [state.data, user?.userToken]);
 
   const filteredAthletes = useMemo(() => {
-    return athletes.filter((a: any) => {
-      return filter === "ALL" || a.disciplines?.includes(filter);
-    });
+    if (filter === "ALL") return athletes;
+    return athletes.filter((a) => a.disciplines.includes(filter));
   }, [athletes, filter]);
 
   return (
@@ -263,7 +365,11 @@ export default function AthleteMarketplace() {
           <div className="bg-[#0a0a0a] border border-zinc-800 rounded-2xl p-1.5 flex flex-wrap gap-1 shadow-[0_20px_40px_rgba(0,0,0,0.6)]">
             <button
               onClick={() => setFilter("ALL")}
-              className={`px-5 py-2.5 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all cursor-pointer ${filter === "ALL" ? "bg-white text-black shadow-xl" : "text-zinc-500 hover:text-zinc-300 border border-transparent"}`}
+              className={`px-5 py-2.5 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all cursor-pointer ${
+                filter === "ALL"
+                  ? "bg-white text-black shadow-xl"
+                  : "text-zinc-500 hover:text-zinc-300 border border-transparent"
+              }`}
             >
               All
             </button>
@@ -271,7 +377,11 @@ export default function AthleteMarketplace() {
               <button
                 key={d}
                 onClick={() => setFilter(d)}
-                className={`px-5 py-2.5 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all cursor-pointer ${filter === d ? "bg-white text-black shadow-xl" : "text-zinc-500 hover:text-zinc-300 border border-transparent"}`}
+                className={`px-5 py-2.5 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all cursor-pointer ${
+                  filter === d
+                    ? "bg-white text-black shadow-xl"
+                    : "text-zinc-500 hover:text-zinc-300 border border-transparent"
+                }`}
               >
                 {DISCIPLINE_CONFIG[d].label}
               </button>
@@ -282,7 +392,6 @@ export default function AthleteMarketplace() {
         {/* ─── DATA GRID ─── */}
         <AnimatePresence mode="wait">
           {isPending && !state.data ? (
-            // Animated Skeleton Loader
             <motion.div
               key="loading"
               initial={{ opacity: 0 }}
@@ -314,25 +423,23 @@ export default function AthleteMarketplace() {
               ))}
             </motion.div>
           ) : filteredAthletes.length > 0 ? (
-            // Live Grid with Layout Animations
             <motion.div
               key="grid"
               layout
               className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5"
             >
               <AnimatePresence>
-                {filteredAthletes.map((athlete: any) => (
+                {filteredAthletes.map((athlete) => (
                   <AthleteCard
                     key={athlete.id}
                     athlete={athlete}
                     onInvite={setInviteTarget}
-                    onView={(id: string) => console.log("Profile", id)}
+                    onView={(id) => console.log("Profile", id)}
                   />
                 ))}
               </AnimatePresence>
             </motion.div>
           ) : (
-            // Empty State
             <motion.div
               key="empty"
               initial={{ opacity: 0, scale: 0.95 }}
@@ -386,123 +493,11 @@ export default function AthleteMarketplace() {
       {/* ─── INVITE MODAL ─── */}
       <AnimatePresence>
         {inviteTarget && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setInviteTarget(null)}
-              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
-            />
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0, y: 20 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.95, opacity: 0, y: 20 }}
-              className="relative bg-[#0a0a0a] border border-zinc-800 p-8 rounded-[2rem] w-full max-w-sm shadow-[0_50px_100px_rgba(0,0,0,1)]"
-            >
-              <button
-                onClick={() => setInviteTarget(null)}
-                className="absolute top-5 right-5 p-2 bg-zinc-900 border border-zinc-800 rounded-full text-zinc-500 hover:text-white transition-colors cursor-pointer z-20"
-              >
-                <X className="w-4 h-4" />
-              </button>
-
-              <div className="flex flex-col items-center text-center mt-2 relative z-10">
-                <div className="relative mb-5">
-                  <div className="absolute inset-0 bg-blue-500/20 blur-2xl rounded-full" />
-                  <img
-                    src={
-                      inviteTarget.profileImage ||
-                      `https://ui-avatars.com/api/?name=${inviteTarget.displayName || inviteTarget.name}&background=18181b&color=fff`
-                    }
-                    className="w-20 h-20 rounded-full border-2 border-zinc-700 shadow-2xl relative z-10 object-cover"
-                    alt={inviteTarget.displayName}
-                  />
-                </div>
-
-                <h2 className="text-2xl font-black text-white tracking-tight">
-                  Draft {inviteTarget.displayName || inviteTarget.name}
-                </h2>
-                <div className="flex flex-wrap items-center justify-center gap-2 mt-3 mb-6">
-                  {inviteTarget.disciplines.map((d: Discipline) => (
-                    <span
-                      key={d}
-                      className={`text-[10px] font-bold uppercase px-2 py-1 rounded border ${DISCIPLINE_CONFIG[d]?.bg} ${DISCIPLINE_CONFIG[d]?.color} ${DISCIPLINE_CONFIG[d]?.border}`}
-                    >
-                      {DISCIPLINE_CONFIG[d]?.label}
-                    </span>
-                  ))}
-                </div>
-
-                {/* Athlete Stats Grid */}
-                <div className="grid grid-cols-2 gap-3 w-full mb-8">
-                  <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-3 flex flex-col items-center justify-center">
-                    <Trophy className="w-4 h-4 text-amber-400 mb-1" />
-                    <span className="text-[10px] uppercase font-bold text-zinc-500">
-                      Experience
-                    </span>
-                    <span className="text-sm font-bold text-white capitalize">
-                      {inviteTarget.experienceLevel?.toLowerCase()}
-                    </span>
-                  </div>
-                  <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-3 flex flex-col items-center justify-center">
-                    <Calendar className="w-4 h-4 text-blue-400 mb-1" />
-                    <span className="text-[10px] uppercase font-bold text-zinc-500">
-                      Training
-                    </span>
-                    <span className="text-sm font-bold text-white">
-                      {inviteTarget.trainingDaysPerWeek} Days/Wk
-                    </span>
-                  </div>
-
-                  {/* Paces (Only show if they exist) */}
-                  {inviteTarget.swimTime100m && (
-                    <div className="col-span-2 bg-zinc-900/50 border border-zinc-800 rounded-xl p-3 flex justify-between items-center px-4">
-                      <span className="text-[11px] uppercase font-bold text-zinc-500 flex items-center gap-2">
-                        <Waves className="w-3.5 h-3.5 text-cyan-400" /> Swim
-                        Pace
-                      </span>
-                      <span className="text-sm font-bold text-white">
-                        {inviteTarget.swimTime100m}s / 100m
-                      </span>
-                    </div>
-                  )}
-                  {inviteTarget.cycleTime10km && (
-                    <div className="col-span-2 bg-zinc-900/50 border border-zinc-800 rounded-xl p-3 flex justify-between items-center px-4">
-                      <span className="text-[11px] uppercase font-bold text-zinc-500 flex items-center gap-2">
-                        <Bike className="w-3.5 h-3.5 text-amber-400" /> Bike
-                        Pace
-                      </span>
-                      <span className="text-sm font-bold text-white">
-                        {inviteTarget.cycleTime10km}m / 10k
-                      </span>
-                    </div>
-                  )}
-                  {inviteTarget.runTime5km && (
-                    <div className="col-span-2 bg-zinc-900/50 border border-zinc-800 rounded-xl p-3 flex justify-between items-center px-4">
-                      <span className="text-[11px] uppercase font-bold text-zinc-500 flex items-center gap-2">
-                        <Footprints className="w-3.5 h-3.5 text-emerald-400" />{" "}
-                        Run Pace
-                      </span>
-                      <span className="text-sm font-bold text-white">
-                        {inviteTarget.runTime5km}m / 5k
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                <button
-                  onClick={() => {
-                    console.log("Inviting:", inviteTarget.id);
-                    setInviteTarget(null);
-                  }}
-                  className="w-full py-4 bg-white hover:bg-zinc-200 text-black rounded-xl font-bold transition-colors cursor-pointer flex items-center justify-center gap-2"
-                >
-                  <UserPlus className="w-4 h-4" /> Send Invitation
-                </button>
-              </div>
-            </motion.div>
-          </div>
+          <InviteAthleteModel
+            setInviteTarget={setInviteTarget}
+            inviteTarget={inviteTarget}
+            DISCIPLINE_CONFIG={DISCIPLINE_CONFIG}
+          />
         )}
       </AnimatePresence>
     </div>

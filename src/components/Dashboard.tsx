@@ -24,7 +24,7 @@ import {
   User,
 } from "lucide-react";
 import { useStateContext } from "../context/useContext";
-
+import { NoTeamWarningModal } from "./NoTeamPopu";
 
 // --- MOCK SUGGESTIONS ---
 const topMatches = [
@@ -249,7 +249,7 @@ export default function Dashboard() {
               }`}
             >
               {!userHasTeam ? (
-             <AlertCircle className="w-8 h-8 text-amber-400" />
+                <AlertCircle className="w-8 h-8 text-amber-400" />
               ) : isTeamComplete ? (
                 <CheckCircle2 className="w-8 h-8 text-blue-400" />
               ) : (
@@ -648,63 +648,16 @@ export default function Dashboard() {
 
         {/* 3. NO TEAM WARNING POPUP */}
         {showNoTeamWarning && (
-          <div
-            key="warning-modal"
-            className="fixed inset-0 z-[100] flex items-center justify-center px-4"
-          >
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setShowNoTeamWarning(false)}
-              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+          <>
+            <NoTeamWarningModal
+              FromWhere="MainDashboard"
+              key="warning-modal"
+              onClose={() => setShowNoTeamWarning(false)}
+              onCreate={() => {
+                setShowNoTeamWarning(false);
+              }}
             />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-full max-w-sm bg-zinc-950 border border-zinc-800 rounded-3xl p-8 shadow-2xl z-10 overflow-hidden"
-            >
-              <div className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] bg-amber-500/10 rounded-full blur-[80px] pointer-events-none" />
-
-              <button
-                onClick={() => setShowNoTeamWarning(false)}
-                className="absolute top-5 right-5 p-2 text-zinc-500 hover:text-white bg-zinc-900/80 rounded-full transition-colors cursor-pointer z-20"
-              >
-                <X className="w-4 h-4" />
-              </button>
-
-              <div className="flex flex-col items-center text-center mt-2 relative z-10">
-                <div className="w-20 h-20 bg-amber-500/10 border border-amber-500/20 rounded-full flex items-center justify-center mb-5 shadow-inner">
-                  <AlertCircle className="w-10 h-10 text-amber-400" />
-                </div>
-
-                <h3 className="text-2xl font-black text-white mb-2 tracking-tight">
-                  No Team Found
-                </h3>
-
-                <p className="text-sm text-zinc-400 mb-8 px-2 leading-relaxed">
-                  You don't have a team yet. Please create your team first
-                  before sending invites to other athletes.
-                </p>
-
-                <div className="flex flex-col w-full gap-3">
-                  <button
-                    onClick={() => setShowNoTeamWarning(false)}
-                    className="w-full py-3.5 bg-blue-500 hover:bg-blue-400 text-white rounded-xl font-bold transition-all shadow-[0_0_20px_rgba(59,130,246,0.3)] cursor-pointer"
-                  >
-                    Go to My Team
-                  </button>
-                  <button
-                    onClick={() => setShowNoTeamWarning(false)}
-                    className="w-full py-3.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 text-zinc-300 rounded-xl font-bold transition-all cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </div>
+          </>
         )}
       </AnimatePresence>
     </div>

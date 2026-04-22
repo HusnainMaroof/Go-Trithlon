@@ -44,6 +44,7 @@ enum InviteStatus {
   PENDING
   ACCEPTED
   REJECTED
+  REVOKED
 }
 
 // ─── Models ──────────────────────────────────────────────
@@ -61,10 +62,11 @@ model User {
   inTeam Boolean    @default(false)
 profileImage              String?   
   athleteProfile  AthleteProfile?
-  ownedTeams      MyTeam[]
+ownedTeams MyTeam[] @relation("TeamOwner")
   teamMemberships MyTeamMember[]
   sentInvites     TeamInvite[]   @relation("InviteSender")
   receivedInvites TeamInvite[]   @relation("InviteReceiver")
+  
 }
 
 model AthleteProfile {
@@ -94,7 +96,7 @@ model MyTeam {
   id        String     @id @default(uuid())
   name      String
   ownerId   String
-  owner     User       @relation(fields: [ownerId], references: [id])
+owner User @relation("TeamOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   status    TeamStatus @default(OPEN)
 
   members   MyTeamMember[]
@@ -111,7 +113,7 @@ model MyTeamMember {
   team     MyTeam     @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
   userId   String
-  user     User       @relation(fields: [userId], references: [id])
+user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // ✅ ONE row = ONE role
   // same user can have TWO rows (two roles) in same team
@@ -131,19 +133,24 @@ model TeamInvite {
   team       MyTeam       @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
   fromUserId String
-  fromUser   User         @relation("InviteSender", fields: [fromUserId], references: [id])
+  fromUser   User         @relation("InviteSender", fields: [fromUserId], references: [id], onDelete: Cascade)
 
   toUserId   String
-  toUser     User         @relation("InviteReceiver", fields: [toUserId], references: [id])
+  toUser     User         @relation("InviteReceiver", fields: [toUserId], references: [id], onDelete: Cascade)
 
-  // ✅ ONE invite = ONE role
   role       Discipline
-
   status     InviteStatus @default(PENDING)
 
   createdAt  DateTime     @default(now())
   updatedAt  DateTime     @updatedAt
 
-  // ✅ prevent duplicate invite for same role to same person in same team
+
   @@unique([teamId, toUserId, role])
+
+  @@unique([teamId, fromUserId, toUserId])
+
+  
+  @@index([toUserId, status])
+  @@index([fromUserId, status])
 }
+

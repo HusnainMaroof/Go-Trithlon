@@ -81,7 +81,7 @@ export async function GET(req: Request) {
     if (!isNewUser && dbUser.status === "PENDING") {
       dbUser = await prisma.user.update({
         where: { id: dbUser.id },
-        data: { status: "ACTIVE", emailVerified: true },
+        data: { status: "ACTIVE",},
       });
     }
 

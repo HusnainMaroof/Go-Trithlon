@@ -107,15 +107,9 @@ export default function ProfileSetup() {
       return {
         ...prev,
         discipline: newDiscipline,
-        ...(alreadySelected && disc === Discipline.SWIMMER
-          ? { swimTime100m: "" }
-          : {}),
-        ...(alreadySelected && disc === Discipline.CYCLIST
-          ? { cycleTime10km: "" }
-          : {}),
-        ...(alreadySelected && disc === Discipline.RUNNER
-          ? { runTime5km: "" }
-          : {}),
+        ...(alreadySelected && disc === "SWIMMER" ? { swimTime100m: "" } : {}), // was Discipline.SWIMME (typo)
+        ...(alreadySelected && disc === "CYCLIST" ? { cycleTime10km: "" } : {}),
+        ...(alreadySelected && disc === "RUNNER" ? { runTime5km: "" } : {}),
       };
     });
   };
@@ -138,9 +132,9 @@ export default function ProfileSetup() {
         return data.discipline.length > 0;
       case 3:
         return data.discipline.every((d) => {
-          if (d === Discipline.SWIMMER) return data.swimTime100m.trim() !== "";
-          if (d === Discipline.CYCLIST) return data.cycleTime10km.trim() !== "";
-          if (d === Discipline.RUNNER) return data.runTime5km.trim() !== "";
+          if (d === "SWIMMER") return data.swimTime100m.trim() !== "";
+          if (d === "CYCLIST") return data.cycleTime10km.trim() !== "";
+          if (d === "RUNNER") return data.runTime5km.trim() !== "";
           return false;
         });
       case 4:
@@ -201,11 +195,15 @@ export default function ProfileSetup() {
     return val.charAt(0) + val.slice(1).toLowerCase();
   };
 
-  useEffect(() => {
-    if (state.success && state.message === "Profile updated successfully") {
-      window.location.href = "/dashboard/home";
-    }
-  }, [state]);
+  
+useEffect(() => {
+  if (state.success && state.message === "Profile created successfully") {
+    window.location.href = "/dashboard/home";
+  }
+  if (state.error) {
+    console.error("Profile save failed:", state.message);
+  }
+}, [state]);
 
   return (
     <div className="min-h-screen w-full bg-black flex items-center justify-center p-4 sm:p-6 selection:bg-blue-500/30 font-sans">
@@ -214,7 +212,7 @@ export default function ProfileSetup() {
       <div className="fixed bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-cyan-500/5 rounded-full blur-[150px] pointer-events-none" />
 
       {/* Main Container */}
-      <div className="relative w-full max-w-xl bg-zinc-950 border border-zinc-800/80 rounded-[2rem] p-6 sm:p-10 shadow-2xl overflow-hidden flex flex-col min-h-[550px] sm:min-h-[600px]">
+      <div className="relative w-full max-w-xl bg-zinc-950 border border-zinc-800/80 rounded-4xl p-6 sm:p-10 shadow-2xl overflow-hidden flex flex-col min-h-140 sm:min-h-155">
         {/* Progress Bar */}
         {step < TOTAL_STEPS && (
           <div className="mb-8 relative z-10">
@@ -228,7 +226,7 @@ export default function ProfileSetup() {
             </div>
             <div className="h-1.5 w-full bg-zinc-900 rounded-full overflow-hidden">
               <motion.div
-                className="h-full bg-gradient-to-r from-blue-500 to-cyan-400"
+                className="h-full bg-linear-to-r from-blue-500 to-cyan-400"
                 initial={{ width: 0 }}
                 animate={{ width: `${(step / 5) * 100}%` }}
                 transition={{ type: "spring", stiffness: 100, damping: 20 }}
@@ -238,7 +236,7 @@ export default function ProfileSetup() {
         )}
 
         {/* Content Area */}
-        <div className="flex-grow relative z-10 flex flex-col justify-center">
+        <div className="grow relative z-10 flex flex-col justify-center">
           <AnimatePresence mode="wait">
             <motion.div
               key={step}
@@ -308,26 +306,27 @@ export default function ProfileSetup() {
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
+              
                     <SelectableCard
                       icon={Waves}
                       label="Swimmer"
                       iconColor="text-cyan-400"
-                      selected={data.discipline.includes(Discipline.SWIMMER)}
-                      onClick={() => toggleDiscipline(Discipline.SWIMMER)}
+                      selected={data.discipline.includes("SWIMMER")}
+                      onClick={() => toggleDiscipline("SWIMMER")}
                     />
                     <SelectableCard
                       icon={Bike}
                       label="Cyclist"
                       iconColor="text-amber-400"
-                      selected={data.discipline.includes(Discipline.CYCLIST)}
-                      onClick={() => toggleDiscipline(Discipline.CYCLIST)}
+                      selected={data.discipline.includes("CYCLIST")}
+                      onClick={() => toggleDiscipline("CYCLIST")}
                     />
                     <SelectableCard
                       icon={Footprints}
                       label="Runner"
                       iconColor="text-emerald-400"
-                      selected={data.discipline.includes(Discipline.RUNNER)}
-                      onClick={() => toggleDiscipline(Discipline.RUNNER)}
+                      selected={data.discipline.includes("RUNNER")}
+                      onClick={() => toggleDiscipline("RUNNER")}
                     />
                   </div>
 
@@ -372,15 +371,15 @@ export default function ProfileSetup() {
                   </div>
 
                   <div
-                    className={`mt-6 grid gap-4 w-full max-h-[360px] overflow-y-auto hide-scrollbar px-1 ${
+                    className={`mt-6 grid gap-4 w-full max-h-90 overflow-y-auto hide-scrollbar px-1 ${
                       data.discipline.length > 1
                         ? "grid-cols-1 sm:grid-cols-2"
                         : "grid-cols-1 max-w-sm mx-auto"
                     }`}
                   >
                     {data.discipline.map((disc) => {
-                      const isSwimmer = disc === Discipline.SWIMMER;
-                      const isCyclist = disc === Discipline.CYCLIST;
+                      const isSwimmer = disc === "SWIMMER";
+                      const isCyclist = disc === "CYCLIST";
 
                       const val = isSwimmer
                         ? data.swimTime100m
@@ -410,6 +409,7 @@ export default function ProfileSetup() {
                           <input
                             type="number"
                             step="any"
+                            
                             min={isSwimmer ? "30" : "5"}
                             max={isSwimmer ? "300" : "120"}
                             placeholder={
@@ -452,7 +452,7 @@ export default function ProfileSetup() {
                       <button
                         key={value}
                         onClick={() => updateData({ experienceLevel: value })}
-                        className={`w-full relative flex flex-col items-center justify-center p-6 rounded-2xl border transition-all cursor-pointer group overflow-hidden min-h-[130px] ${
+                        className={`w-full relative flex flex-col items-center justify-center p-6 rounded-2xl border transition-all cursor-pointer group overflow-hidden min-h-32.5 ${
                           data.experienceLevel === value
                             ? "bg-zinc-900 border-zinc-600 shadow-lg scale-[1.02]"
                             : "bg-zinc-950 border-zinc-800 hover:border-zinc-700 hover:bg-zinc-900/50 hover:scale-[1.01]"
@@ -589,7 +589,7 @@ export default function ProfileSetup() {
                     </div>
                   )}
 
-                  <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-5 sm:p-6 space-y-1 max-h-[300px] overflow-y-auto hide-scrollbar">
+                  <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-5 sm:p-6 space-y-1 max-h-75 overflow-y-auto hide-scrollbar">
                     <SummaryRow label="Display Name" value={data.displayName} />
                     <SummaryRow label="Location" value={data.locationCity} />
                     <SummaryRow
@@ -607,8 +607,8 @@ export default function ProfileSetup() {
                       </span>
                       <div className="space-y-2">
                         {data.discipline.map((d) => {
-                          const isSwimmer = d === Discipline.SWIMMER;
-                          const isCyclist = d === Discipline.CYCLIST;
+                          const isSwimmer = d === "SWIMMER";
+                          const isCyclist = d === "CYCLIST";
                           const val = isSwimmer
                             ? data.swimTime100m
                             : isCyclist
@@ -698,7 +698,7 @@ function SelectableCard({
   return (
     <button
       onClick={onClick}
-      className={`w-full min-h-[140px] relative flex flex-col items-center justify-center p-5 rounded-2xl border transition-all cursor-pointer group overflow-hidden ${
+      className={`w-full min-h-35 relative flex flex-col items-center justify-center p-5 rounded-2xl border transition-all cursor-pointer group overflow-hidden ${
         selected
           ? "bg-zinc-900 border-zinc-600 shadow-lg scale-[1.02]"
           : "bg-zinc-950 border-zinc-800 hover:border-zinc-700 hover:bg-zinc-900/50 hover:scale-[1.01]"

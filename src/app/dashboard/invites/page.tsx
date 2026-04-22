@@ -1,21 +1,23 @@
-import AthleteMarketplace from "@/src/components/AthleteMarket";
+import InvitesDashboard from "@/src/components/InvitesDashboard";
 import NavBar from "@/src/components/NavBar";
 import { getCurrentUser } from "@/src/lib/auth";
 import { redirect } from "next/navigation";
 import React from "react";
 
-const page = async () => {
+const pages = async () => {
   const user = await getCurrentUser();
 
-  if (!user.authsuccess.data.sessionId) {
+  if (!user.authsuccess.data.userToken) {
     redirect("/");
   }
+
   return (
-    <div className="w-full h-full">
+    <div className="w-full">
+      {" "}
       <NavBar />
-      <AthleteMarketplace />
+      <InvitesDashboard />{" "}
     </div>
   );
 };
 
-export default page;
+export default pages;

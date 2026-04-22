@@ -6,6 +6,7 @@ import setRedis from "../lib/redis";
 
 import { Discipline as PrismaDiscipline } from "../generated/prisma/enums";
 import { Discipline } from "../type/dashboardtype";
+import { updateAthleteInPool } from "./getData.service";
 
 const CACHE_TTL = 60 * 60 * 24 * 7;
 const VALID_DISCIPLINES: PrismaDiscipline[] = [
@@ -90,11 +91,10 @@ export const createTeamService = async (
       data: null,
     };
   }
-
-  const athleteProfile = await prisma.athleteProfile.findUnique({
-    where: { userId },
-  });
-
+const [athleteProfile, existingTeam] = await Promise.all([
+  prisma.athleteProfile.findUnique({ where: { userId } }),
+  prisma.myTeam.findFirst({ where: { ownerId: userId } }),
+]);
   if (!athleteProfile) {
     return {
       success: false,
@@ -104,9 +104,6 @@ export const createTeamService = async (
     };
   }
 
-  const existingTeam = await prisma.myTeam.findFirst({
-    where: { ownerId: userId },
-  });
 
   if (existingTeam) {
     return {
@@ -200,31 +197,20 @@ export const claimSlotService = async (
     };
   }
 
-  // 4. Check slot availability
-  const slotTaken = team.members.some((m) => m.role === role);
-
-  if (slotTaken) {
-    return {
-      success: false,
-      error: true,
-      message: `${role} slot already filled.`,
-      data: null,
-    };
+  if (team.members.some((m) => m.role === role)) {
+    return { success: false, error: true, message: `${role} slot already filled.`, data: null };
   }
 
   // 5. Create membership (minimal write)
-  const membership = await prisma.myTeamMember.create({
-    data: {
-      teamId,
-      userId,
-      role,
-    },
-  });
-
-  const updateduserData = await prisma.user.updateMany({
-    where: { id: userId },
-    data: { inTeam: true },
-  });
+  const [membership] = await Promise.all([
+    prisma.myTeamMember.create({
+      data: { teamId, userId, role },
+    }),
+    prisma.user.updateMany({
+      where: { id: userId },
+      data: { inTeam: true },
+    }),
+  ]);
 
   const enrichedMember = {
     ...membership,
@@ -236,7 +222,25 @@ export const claimSlotService = async (
 
   // 7. Invalidate cache
   await setRedis.del(`myteam:${team.ownerId}`);
-  await setRedis.del(`auth_session:${userId}`);
+  // ✅ update inTeam in the session cache instead of busting it
+  const cacheKey = `auth_session:${userId}`;
+  const cached = await setRedis.get(cacheKey);
+  if (cached) {
+    const session = typeof cached === "string" ? JSON.parse(cached) : cached;
+    const ttl = await setRedis.ttl(cacheKey);
+    const updated = { ...session, inTeam: true }; // or true for claim
+    if (ttl > 0) {
+      await setRedis.set(cacheKey, JSON.stringify(updated), { ex: ttl });
+    } else {
+      await setRedis.set(cacheKey, JSON.stringify(updated));
+    }
+  }
+
+await Promise.all([
+  setRedis.del(`myteam:${team.ownerId}`),
+  updateAthleteInPool(userId, { inTeam: true }),
+]);
+
 
   return {
     success: true,
@@ -318,6 +322,12 @@ export const removeFromTeamService = async (
   const cacheKey = `myteam:${team.ownerId}`;
   await setRedis.del(cacheKey);
 
+
+await Promise.all([
+  setRedis.del(`myteam:${team.ownerId}`),
+  updateAthleteInPool(memberRow.userId, { inTeam: false }),
+]);
+
   return {
     success: true,
     error: false,
@@ -355,7 +365,19 @@ export const deleteTeamService = async (
 
   await prisma.myTeam.delete({ where: { id: teamId } });
   await setRedis.del(`myteam:${userId}`);
-  await setRedis.del(`auth_session:${userId}`);
+  // ✅ update inTeam in the session cache instead of busting it
+  const cacheKey = `auth_session:${userId}`;
+  const cached = await setRedis.get(cacheKey);
+  if (cached) {
+    const session = typeof cached === "string" ? JSON.parse(cached) : cached;
+    const ttl = await setRedis.ttl(cacheKey);
+    const updated = { ...session, inTeam: false }; // or true for claim
+    if (ttl > 0) {
+      await setRedis.set(cacheKey, JSON.stringify(updated), { ex: ttl });
+    } else {
+      await setRedis.set(cacheKey, JSON.stringify(updated));
+    }
+  }
 
   return {
     success: true,

@@ -83,14 +83,14 @@ const cardVariants = {
     y: 0,
     transition: { type: "spring", stiffness: 100, damping: 20 },
   },
-};
+} as const ;
 
 // ─── UI COMPONENTS ──────────────────────────────────────────────────────────
 
 const StatCard = ({ label, value, icon: Icon, colorClass, subtitle }: any) => (
   <motion.div
     variants={cardVariants}
-    className="p-6 bg-zinc-900/20 border border-zinc-800/50 rounded-[1.5rem] flex flex-col gap-4 transition-all duration-300 hover:border-zinc-700/50 group shadow-sm"
+    className="p-6 bg-zinc-900/20 border border-zinc-800/50 rounded-3xl flex flex-col gap-4 transition-all duration-300 hover:border-zinc-700/50 group shadow-sm"
   >
     <div className="flex justify-between items-start">
       <div
@@ -394,7 +394,7 @@ export default function AthleteProfileDashboard({
           variants={cardVariants}
           className="p-10 bg-zinc-900/10 border border-zinc-800/40 rounded-[2.5rem] flex flex-col items-center text-center gap-6 relative overflow-hidden shadow-sm"
         >
-          <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-blue-500/20 to-transparent" />
+          <div className="absolute top-0 left-0 w-full h-1 bg-linear-to-r from-transparent via-blue-500/20 to-transparent" />
           <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center shadow-inner border border-blue-500/20 text-blue-400">
             <Trophy className="w-6 h-6" />
           </div>
