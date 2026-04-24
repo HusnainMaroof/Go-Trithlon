@@ -640,6 +640,7 @@ export default function App() {
               setRecruitSlot(null);
               setServiceError(null);
             }}
+            FromWhere="MyTeamDashboard" //
             onClaim={handleClaimSlot}
             userDisciplines={userDisciplines}
             user={user}

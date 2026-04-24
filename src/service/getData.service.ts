@@ -1,6 +1,5 @@
 import setRedis from "../lib/redis";
 
-// services/athletePool.ts
 export const addAthleteToPool = async (
   userId: string,
   profile: any,
@@ -16,17 +15,27 @@ export const addAthleteToPool = async (
     athleteData: profile,
   };
 
-  // Write individual entry — long TTL
-  await setRedis.set(
-    `athletes:user:${userId}`,
-    JSON.stringify(athleteEntry),
-    { ex: 60 * 60 * 24 * 7 },
-  );
+  const disciplines: string[] = Array.isArray(profile.disciplines)
+    ? profile.disciplines
+    : [];
 
-  // Append to index — store as a Redis list
-  await setRedis.lpush("athletes:index", userId);
+  // Single pipeline — all writes in one round-trip
+  const pipeline = setRedis.pipeline();
+
+  pipeline.set(`athletes:user:${userId}`, JSON.stringify(athleteEntry), {
+    ex: 60 * 60 * 24 * 7,
+  });
+
+  // Global index (kept for the full marketplace view)
+  pipeline.lpush("athletes:index", userId);
+
+  // Discipline-specific Sets — SADD is idempotent, no duplicate risk
+  for (const discipline of disciplines) {
+    pipeline.sadd(`athletes:discipline:${discipline}`, userId);
+  }
+
+  await pipeline.exec();
 };
-
 
 export const updateAthleteInPool = async (
   userId: string,
@@ -34,15 +43,13 @@ export const updateAthleteInPool = async (
 ): Promise<void> => {
   const key = `athletes:user:${userId}`;
   const cached = await setRedis.get(key);
-  if (!cached) return; // not in pool yet, skip
+  if (!cached) return;
 
   const entry = typeof cached === "string" ? JSON.parse(cached) : cached;
   const updated = { ...entry, ...patch };
 
   const ttl = await setRedis.ttl(key);
-  if (ttl > 0) {
-    await setRedis.set(key, JSON.stringify(updated), { ex: ttl });
-  } else {
-    await setRedis.set(key, JSON.stringify(updated), { ex: 60 * 60 * 24 * 7 });
-  }
+  await setRedis.set(key, JSON.stringify(updated), {
+    ex: ttl > 0 ? ttl : 60 * 60 * 24 * 7,
+  });
 };

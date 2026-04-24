@@ -8,6 +8,8 @@ const pages = async () => {
   const user = await getCurrentUser();
 
   if (!user.authsuccess.data.userToken) {
+    console.log("restriected");
+
     redirect("/");
   }
 

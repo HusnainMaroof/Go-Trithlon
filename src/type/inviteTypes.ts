@@ -59,10 +59,7 @@ export type SentInvite = {
   fromUser: UserSnippet;
 };
 
-export type InvitesData = {
-  received: ReceivedInvite[];
-  sent: SentInvite[];
-};
+
 
 // ─── ACTION PAYLOADS ──────────────────────────────────────────────────────────
 

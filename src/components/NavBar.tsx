@@ -10,13 +10,14 @@ import {
   Activity,
   ChevronDown,
   Settings,
+  Mail,
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
-import { redirect, usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useStateContext } from "../context/useContext";
 
-// Helper component for robust profile image loading
+// ─── Profile Avatar ────────────────────────────────────────────────────────────
 const ProfileAvatar = ({
   src,
   alt,
@@ -30,7 +31,6 @@ const ProfileAvatar = ({
 }) => {
   const [imgError, setImgError] = useState(false);
 
-  // Reset error state if the source changes
   useEffect(() => {
     setImgError(false);
   }, [src]);
@@ -38,7 +38,7 @@ const ProfileAvatar = ({
   if (!src || imgError) {
     return (
       <div
-        className={`${sizeClass} rounded-full bg-gradient-to-b from-zinc-800 to-zinc-900 ${borderClass} flex items-center justify-center shadow-inner`}
+        className={`${sizeClass} rounded-full bg-linear-to-b from-zinc-800 to-zinc-900 ${borderClass} flex items-center justify-center shadow-inner`}
       >
         <User className="w-[45%] h-[45%] text-zinc-500" />
       </div>
@@ -55,29 +55,64 @@ const ProfileAvatar = ({
   );
 };
 
+// ─── Nav Item ──────────────────────────────────────────────────────────────────
+const NavItem = ({
+  href,
+  label,
+  isActive,
+  onClick,
+}: {
+  href: string;
+  label: string;
+  isActive: boolean;
+  onClick?: () => void;
+}) => (
+  <Link href={href} onClick={onClick}>
+    <button
+      className={`relative px-4 py-1.5 rounded-full text-sm font-bold transition-all duration-200 border cursor-pointer ${
+        isActive
+          ? "bg-zinc-800 text-white border-zinc-700 shadow-sm"
+          : "text-zinc-400 hover:text-white hover:bg-zinc-900 border-transparent"
+      }`}
+    >
+      {isActive && (
+        <motion.span
+          layoutId="nav-active-pill"
+          className="absolute inset-0 rounded-full bg-zinc-800 border border-zinc-700 -z-10"
+          transition={{ type: "spring", stiffness: 400, damping: 30 }}
+        />
+      )}
+      {label}
+    </button>
+  </Link>
+);
+
+// ─── NavBar ────────────────────────────────────────────────────────────────────
 const NavBar = () => {
   const { user, setShowLoginPopup } = useStateContext();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-
-  // Use Next.js pathname to dynamically highlight the active tab
   const pathname = usePathname();
+  // ✅ Fix: useRouter for client-side navigation, not redirect()
+  const router = useRouter();
 
   const isLoggedIn = Boolean(user?.userToken);
 
+  // ✅ Fix: "My Invites" is now part of the unified nav link system
   const navLinks = [
     { id: "dashboard", label: "Dashboard", href: "/dashboard/home" },
     { id: "athletes", label: "Athletes", href: "/dashboard/athletes" },
     { id: "my-team", label: "My Team", href: "/dashboard/myteam" },
+    { id: "invites", label: "My Invites", href: "/dashboard/invites" },
   ];
 
-  // Close dropdown when clicking outside
+  // Close dropdown on outside click
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
+    const handleClickOutside = (e: MouseEvent) => {
       if (
         dropdownRef.current &&
-        !dropdownRef.current.contains(event.target as Node)
+        !dropdownRef.current.contains(e.target as Node)
       ) {
         setDropdownOpen(false);
       }
@@ -86,25 +121,19 @@ const NavBar = () => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Premium Dropdown Animation Variants
+  // Close mobile menu on route change
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [pathname]);
+
   const dropdownVariants: Variants = {
-    hidden: {
-      opacity: 0,
-      y: 12,
-      scale: 0.95,
-      filter: "blur(8px)",
-    },
+    hidden: { opacity: 0, y: 12, scale: 0.95, filter: "blur(8px)" },
     visible: {
       opacity: 1,
       y: 0,
       scale: 1,
       filter: "blur(0px)",
-      transition: {
-        type: "spring",
-        stiffness: 350,
-        damping: 25,
-        mass: 0.8,
-      },
+      transition: { type: "spring", stiffness: 350, damping: 25, mass: 0.8 },
     },
     exit: {
       opacity: 0,
@@ -120,14 +149,13 @@ const NavBar = () => {
       <nav className="sticky top-0 z-50 bg-zinc-950/80 backdrop-blur-md border-b border-zinc-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
-            {/* Logo */}
-            <div
-              onClick={() => {
-                redirect("/");
-              }}
-              className="flex items-center gap-3 cursor-pointer group"
+            {/* ── Logo ── */}
+            {/* ✅ Fix: use Link or router.push, not redirect() which is server-only */}
+            <button
+              onClick={() => router.push("/")}
+              className="flex items-center gap-3 cursor-pointer group bg-transparent border-none outline-none"
             >
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500/10 to-cyan-400/10 border border-blue-500/20 flex items-center justify-center shadow-inner group-hover:border-blue-500/40 group-hover:shadow-blue-500/20 transition-all duration-300">
+              <div className="w-10 h-10 rounded-xl bg-linear-to-br from-blue-500/10 to-cyan-400/10 border border-blue-500/20 flex items-center justify-center shadow-inner group-hover:border-blue-500/40 group-hover:shadow-blue-500/20 transition-all duration-300">
                 <Zap
                   className="text-blue-400 w-5 h-5 group-hover:scale-110 transition-transform duration-300"
                   fill="currentColor"
@@ -136,56 +164,32 @@ const NavBar = () => {
               <span className="font-semibold text-xl tracking-tight text-white group-hover:text-blue-400 transition-colors">
                 TriMatch
               </span>
-            </div>
+            </button>
 
-            {/* Desktop Navigation (Only show if onboarded/logged in) */}
+            {/* ── Desktop Nav ── */}
             {isLoggedIn && user?.isOnboard && (
               <div className="hidden md:block">
                 <div className="flex items-center space-x-1 border border-zinc-800 rounded-full p-1 bg-zinc-950 shadow-inner">
-                  {navLinks.map((tab) => {
-                    // Check if current route matches tab href
-                    const isActive = pathname?.startsWith(tab.href);
-
-                    return (
-                      <Link key={tab.id} href={tab.href}>
-                        <button
-                          className={`px-4 py-1.5 rounded-full text-sm font-bold transition-all border cursor-pointer ${
-                            isActive
-                              ? "bg-zinc-800 text-white border-zinc-700 shadow-sm"
-                              : "text-zinc-400 hover:text-white hover:bg-zinc-900 border-transparent"
-                          }`}
-                        >
-                          {tab.label}
-                        </button>
-                      </Link>
-                    );
-                  })}
+                  {navLinks.map((tab) => (
+                    <NavItem
+                      key={tab.id}
+                      href={tab.href}
+                      label={tab.label}
+                      isActive={Boolean(pathname?.startsWith(tab.href))}
+                    />
+                  ))}
                 </div>
               </div>
             )}
 
-            {/* Right Side Actions: Profile OR Sign In */}
-            <div className="flex items-center gap-4">
-              <div className="flex items-center space-x-1 border border-zinc-800 rounded-full p-1 bg-zinc-950 shadow-inner">
-                <Link key={0} href={`/dashboard/invites`}>
-                  <button
-                    className={`px-4 py-1.5 rounded-full text-sm font-bold transition-all border cursor-pointer 
-                    
-                         "bg-zinc-800 text-white border-zinc-700 shadow-sm"
-                      
-                    `}
-                  >
-                    My Invites
-                  </button>
-                </Link>
-              </div>
-
+            {/* ── Right Side ── */}
+            <div className="flex items-center gap-3">
               {isLoggedIn ? (
                 <>
                   {/* Desktop Profile Dropdown */}
                   <div className="hidden md:block relative" ref={dropdownRef}>
                     <button
-                      onClick={() => setDropdownOpen(!dropdownOpen)}
+                      onClick={() => setDropdownOpen((prev) => !prev)}
                       className={`flex items-center gap-3 bg-zinc-950 border rounded-full pl-4 pr-2 py-1.5 shadow-sm transition-all cursor-pointer group ${
                         dropdownOpen
                           ? "border-zinc-600 bg-zinc-900"
@@ -204,24 +208,35 @@ const NavBar = () => {
                       </div>
 
                       <div className="ml-1 relative">
-                        {/* Dynamic glow effect behind avatar on hover/open */}
                         <div
-                          className={`absolute inset-0 rounded-full blur-md transition-opacity duration-300 ${dropdownOpen ? "bg-blue-500/30 opacity-100" : "bg-blue-500/0 opacity-0 group-hover:opacity-40"}`}
+                          className={`absolute inset-0 rounded-full blur-md transition-opacity duration-300 ${
+                            dropdownOpen
+                              ? "bg-blue-500/30 opacity-100"
+                              : "bg-blue-500/0 opacity-0 group-hover:opacity-40"
+                          }`}
                         />
                         <ProfileAvatar
                           src={user?.profileImage}
                           alt={user?.displayName || "User"}
                           sizeClass="w-9 h-9"
-                          borderClass={`border transition-colors duration-300 relative z-10 ${dropdownOpen ? "border-zinc-500" : "border-zinc-700 group-hover:border-zinc-600"}`}
+                          borderClass={`border transition-colors duration-300 relative z-10 ${
+                            dropdownOpen
+                              ? "border-zinc-500"
+                              : "border-zinc-700 group-hover:border-zinc-600"
+                          }`}
                         />
                       </div>
 
                       <ChevronDown
-                        className={`w-4 h-4 text-zinc-500 transition-transform duration-300 ease-out ${dropdownOpen ? "rotate-180 text-zinc-300" : "group-hover:text-zinc-400"}`}
+                        className={`w-4 h-4 text-zinc-500 transition-transform duration-300 ease-out ${
+                          dropdownOpen
+                            ? "rotate-180 text-zinc-300"
+                            : "group-hover:text-zinc-400"
+                        }`}
                       />
                     </button>
 
-                    {/* Animated Dropdown Menu */}
+                    {/* Dropdown Menu */}
                     <AnimatePresence>
                       {dropdownOpen && (
                         <motion.div
@@ -231,9 +246,9 @@ const NavBar = () => {
                           exit="exit"
                           className="absolute right-0 mt-3 w-60 bg-zinc-950/95 backdrop-blur-xl border border-zinc-800 rounded-2xl shadow-2xl shadow-black/50 overflow-hidden py-2 z-50 origin-top-right"
                         >
-                          {/* Mini header inside dropdown */}
-                          <div className="px-4 py-2 border-b border-zinc-800/60 mb-1">
-                            <p className="text-xs font-bold text-zinc-500 uppercase tracking-wider">
+                          {/* Signed-in header */}
+                          <div className="px-4 py-2.5 border-b border-zinc-800/60 mb-1">
+                            <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-0.5">
                               Signed in as
                             </p>
                             <p className="text-sm font-medium text-zinc-300 truncate">
@@ -244,6 +259,7 @@ const NavBar = () => {
                           <div className="px-2 py-1 space-y-0.5">
                             <Link
                               href={`/dashboard/athletes/athletesprofile/${user?.sessionId}`}
+                              onClick={() => setDropdownOpen(false)}
                             >
                               <button className="group flex items-center gap-3 w-full px-3 py-2.5 text-sm font-bold text-zinc-300 hover:text-white hover:bg-zinc-900 rounded-xl transition-all cursor-pointer">
                                 <User className="w-4 h-4 text-zinc-400 group-hover:text-blue-400 transition-colors" />
@@ -252,6 +268,19 @@ const NavBar = () => {
                                 </span>
                               </button>
                             </Link>
+
+                            <Link
+                              href="/dashboard/invites"
+                              onClick={() => setDropdownOpen(false)}
+                            >
+                              <button className="group flex items-center gap-3 w-full px-3 py-2.5 text-sm font-bold text-zinc-300 hover:text-white hover:bg-zinc-900 rounded-xl transition-all cursor-pointer">
+                                <Mail className="w-4 h-4 text-zinc-400 group-hover:text-blue-400 transition-colors" />
+                                <span className="transform transition-transform duration-200 group-hover:translate-x-1">
+                                  My Invites
+                                </span>
+                              </button>
+                            </Link>
+
                             <button className="group flex items-center gap-3 w-full px-3 py-2.5 text-sm font-bold text-zinc-300 hover:text-white hover:bg-zinc-900 rounded-xl transition-all cursor-pointer">
                               <Settings className="w-4 h-4 text-zinc-400 group-hover:text-zinc-200 transition-colors" />
                               <span className="transform transition-transform duration-200 group-hover:translate-x-1">
@@ -260,7 +289,7 @@ const NavBar = () => {
                             </button>
                           </div>
 
-                          <div className="h-px bg-zinc-800/60 my-1 w-full" />
+                          <div className="h-px bg-zinc-800/60 my-1 mx-2" />
 
                           <div className="px-2 py-1">
                             <button className="group flex items-center gap-3 w-full px-3 py-2.5 text-sm font-bold text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-xl transition-all cursor-pointer">
@@ -273,24 +302,34 @@ const NavBar = () => {
                     </AnimatePresence>
                   </div>
 
-                  {/* Mobile menu button */}
+                  {/* Mobile Hamburger */}
                   <div className="md:hidden flex items-center">
                     <button
-                      onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                      onClick={() => setMobileMenuOpen((prev) => !prev)}
                       className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-900 rounded-full transition-colors cursor-pointer"
                     >
-                      {mobileMenuOpen ? (
-                        <X className="w-6 h-6" />
-                      ) : (
-                        <Menu className="w-6 h-6" />
-                      )}
+                      <AnimatePresence mode="wait" initial={false}>
+                        <motion.div
+                          key={mobileMenuOpen ? "close" : "open"}
+                          initial={{ rotate: -90, opacity: 0 }}
+                          animate={{ rotate: 0, opacity: 1 }}
+                          exit={{ rotate: 90, opacity: 0 }}
+                          transition={{ duration: 0.15 }}
+                        >
+                          {mobileMenuOpen ? (
+                            <X className="w-6 h-6" />
+                          ) : (
+                            <Menu className="w-6 h-6" />
+                          )}
+                        </motion.div>
+                      </AnimatePresence>
                     </button>
                   </div>
                 </>
               ) : (
                 <button
                   onClick={() => setShowLoginPopup(true)}
-                  className="px-6 py-2 md:px-6 md:py-2.5 rounded-xl font-bold text-sm transition-all bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 text-zinc-200 hover:text-white shadow-sm whitespace-nowrap cursor-pointer hover:shadow-zinc-800/50"
+                  className="px-6 py-2 md:px-6 md:py-2.5 rounded-xl font-bold text-sm transition-all bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 text-zinc-200 hover:text-white shadow-sm whitespace-nowrap cursor-pointer"
                 >
                   Sign In
                 </button>
@@ -300,7 +339,7 @@ const NavBar = () => {
         </div>
       </nav>
 
-      {/* Mobile Menu Overlay */}
+      {/* ── Mobile Menu ── */}
       <AnimatePresence>
         {mobileMenuOpen && isLoggedIn && (
           <motion.div
@@ -311,34 +350,29 @@ const NavBar = () => {
             className="md:hidden bg-zinc-950 border-b border-zinc-800 overflow-hidden shadow-2xl"
           >
             <div className="px-4 py-5 space-y-5">
-              {isLoggedIn && (
-                <div className="flex items-center gap-4 pb-5 border-b border-zinc-800/60">
-                  <ProfileAvatar
-                    src={user?.profileImage}
-                    alt={user?.displayName || "User"}
-                    sizeClass="w-14 h-14"
-                    borderClass="border-2 border-zinc-700"
-                  />
-                  <div>
-                    <div className="font-bold text-white text-lg">
-                      {user?.displayName || "Athlete"}
-                    </div>
-                    <div className="text-sm text-zinc-400">{user?.email}</div>
+              {/* Mobile Profile Header */}
+              <div className="flex items-center gap-4 pb-5 border-b border-zinc-800/60">
+                <ProfileAvatar
+                  src={user?.profileImage}
+                  alt={user?.displayName || "User"}
+                  sizeClass="w-14 h-14"
+                  borderClass="border-2 border-zinc-700"
+                />
+                <div>
+                  <div className="font-bold text-white text-lg">
+                    {user?.displayName || "Athlete"}
                   </div>
+                  <div className="text-sm text-zinc-400">{user?.email}</div>
                 </div>
-              )}
+              </div>
 
               {user?.isOnboard && (
                 <div className="space-y-1.5">
+                  {/* ✅ Fix: All nav links including invites share the same active-state logic */}
                   {navLinks.map((tab) => {
-                    const isActive = pathname?.startsWith(tab.href);
-
+                    const isActive = Boolean(pathname?.startsWith(tab.href));
                     return (
-                      <Link
-                        key={tab.id}
-                        href={tab.href}
-                        onClick={() => setMobileMenuOpen(false)}
-                      >
+                      <Link key={tab.id} href={tab.href}>
                         <button
                           className={`block w-full text-left px-4 py-3.5 rounded-xl text-base font-bold transition-colors border cursor-pointer ${
                             isActive
@@ -352,18 +386,25 @@ const NavBar = () => {
                     );
                   })}
 
-                  <div className="h-px bg-zinc-800/60 my-4 w-full" />
+                  <div className="h-px bg-zinc-800/60 my-3 w-full" />
+
+                  <Link
+                    href={`/dashboard/athletes/athletesprofile/${user?.sessionId}`}
+                  >
+                    <button className="flex items-center gap-3 w-full text-left px-4 py-3.5 rounded-xl text-base font-bold text-zinc-400 hover:text-white hover:bg-zinc-900/50 border border-transparent transition-colors cursor-pointer">
+                      <User className="w-5 h-5 text-zinc-500" />
+                      View Profile
+                    </button>
+                  </Link>
 
                   <button className="flex items-center gap-3 w-full text-left px-4 py-3.5 rounded-xl text-base font-bold text-zinc-400 hover:text-white hover:bg-zinc-900/50 border border-transparent transition-colors cursor-pointer">
-                    <User className="w-5 h-5 text-zinc-500" /> View Profile
-                  </button>
-                  <button className="flex items-center gap-3 w-full text-left px-4 py-3.5 rounded-xl text-base font-bold text-zinc-400 hover:text-white hover:bg-zinc-900/50 border border-transparent transition-colors cursor-pointer">
-                    <Settings className="w-5 h-5 text-zinc-500" /> Account
-                    Settings
+                    <Settings className="w-5 h-5 text-zinc-500" />
+                    Account Settings
                   </button>
 
                   <button className="flex items-center gap-3 w-full text-left px-4 py-3.5 mt-2 rounded-xl text-base font-bold text-red-400 hover:bg-red-500/10 border border-transparent transition-colors cursor-pointer">
-                    <LogOut className="w-5 h-5 opacity-80" /> Sign Out
+                    <LogOut className="w-5 h-5 opacity-80" />
+                    Sign Out
                   </button>
                 </div>
               )}

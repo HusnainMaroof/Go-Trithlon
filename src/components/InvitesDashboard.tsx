@@ -31,11 +31,11 @@ import { Discipline } from "../generated/prisma/enums";
 import {
   ActionResponse,
   InviteActionPayload,
-  InvitesData,
   ReceivedInvite,
   SentInvite,
 } from "../type/inviteTypes";
 import { inviteAction } from "../actions/InviteAction";
+import { DashboardSkeleton } from "./Sekeltons";
 
 // ─── TYPES ───────────────────────────────────────────────────────────────────
 
@@ -89,7 +89,7 @@ const DISCIPLINE_CONFIG: Record<Discipline, DisciplineConfig> = {
   },
 };
 
-const initialState: ActionResponse<InvitesData> = {
+const initialState: ActionResponse = {
   success: false,
   error: false,
   message: null,
@@ -505,7 +505,7 @@ export default function InvitesDashboard() {
       setIsInitialLoad(false);
       if (state.success && state.data) {
         setReceived(state?.data?.received!);
-        setSent(state.data.sent);
+        setSent(state.data?.sent!);
       }
       pendingService.current = null;
       return;
@@ -547,6 +547,8 @@ export default function InvitesDashboard() {
 
     pendingService.current = null;
     pendingInviteId.current = null;
+
+    console.log(state);
   }, [state, isPending]);
 
   // ── Dispatch helpers ──
@@ -575,6 +577,17 @@ export default function InvitesDashboard() {
     },
     { key: "sent" as Tab, label: "Sent", icon: Send, count: sent.length },
   ];
+
+  useEffect(() => {
+    console.log(state);
+  }, [state]);
+
+  if (isPending && !state.data)
+    return (
+      <div className="pt-5">
+        <DashboardSkeleton />
+      </div>
+    );
 
   return (
     <div className="min-h-screen bg-black font-sans text-zinc-400 p-4 sm:p-6 lg:p-10 selection:bg-blue-500/30 relative overflow-x-hidden">
