@@ -3,7 +3,7 @@
 import { Discipline } from "../generated/prisma/enums";
 import { prisma } from "../lib/prisma";
 import setRedis from "../lib/redis";
-import { InvitesData, ReceivedInvite, SentInvite } from "../type/inviteTypes";
+import { ReceivedInvite, SentInvite } from "../type/inviteTypes";
 
 // ─── CACHE CONFIG ─────────────────────────────────────────────────────────────
 
@@ -39,7 +39,7 @@ async function bustCache(...keys: string[]): Promise<void> {
 // ─── SERVICE ──────────────────────────────────────────────────────────────────
 
 export const inviteService = {
-  async getInvites(userId: string): Promise<InvitesData> {
+  async getInvites(userId: string): Promise<any> {
     const rKey = cacheKey.received(userId);
     const sKey = cacheKey.sent(userId);
 
@@ -129,8 +129,10 @@ export const inviteService = {
         prisma.myTeamMember.findUnique({
           where: { teamId_role: { teamId: team.id, role: payload.role } },
         }),
+        // Only fetch what we need
         prisma.athleteProfile.findUnique({
           where: { userId: payload.toUserId },
+          select: { disciplines: true },
         }),
         prisma.teamInvite.findUnique({
           where: {
@@ -140,6 +142,7 @@ export const inviteService = {
               role: payload.role,
             },
           },
+          select: { status: true },
         }),
       ]);
 
@@ -148,7 +151,14 @@ export const inviteService = {
     if (!receiverProfile) throw new Error("Receiver has no athlete profile");
     if (!receiverProfile.disciplines.includes(payload.role))
       throw new Error(`This athlete cannot perform ${payload.role}`);
-    if (duplicateInvite) throw new Error("Invite already sent for this role");
+
+    // Allow re-invite only if previous was REJECTED or REVOKED
+    if (
+      duplicateInvite &&
+      duplicateInvite.status !== "REJECTED" &&
+      duplicateInvite.status !== "REVOKED"
+    )
+      throw new Error("Invite already sent for this role");
 
     await prisma.teamInvite.create({
       data: {
@@ -193,7 +203,8 @@ export const inviteService = {
         where: { id: invite.id },
         data: { status: "ACCEPTED" },
       }),
-      prisma.user.updateMany({
+      // Use update not updateMany — id is unique
+      prisma.user.update({
         where: { id: userId },
         data: { inTeam: true },
       }),
@@ -224,21 +235,26 @@ export const inviteService = {
       where: { id: inviteId },
     });
 
-    if (!invite) throw new Error("Invite not found");
-    if (invite.toUserId !== userId)
-      throw new Error("This invite is not for you");
-    if (invite.status !== "PENDING")
-      throw new Error("Invite already responded to");
 
-    await prisma.teamInvite.update({
-      where: { id: invite.id },
-      data: { status: "REJECTED" },
-    });
 
-    await bustCache(
-      cacheKey.received(userId),
-      cacheKey.sent(invite.fromUserId),
-    );
+console.log("from service rej",invite);
+
+
+    // if (!invite) throw new Error("Invite not found");
+    // if (invite.toUserId !== userId)
+    //   throw new Error("This invite is not for you");
+    // if (invite.status !== "PENDING")
+    //   throw new Error("Invite already responded to");
+
+    // await prisma.teamInvite.update({
+    //   where: { id: invite.id },
+    //   data: { status: "REJECTED" },
+    // });
+
+    // await bustCache(
+    //   cacheKey.received(userId),
+    //   cacheKey.sent(invite.fromUserId),
+    // );
   },
 
   async revokeInvite(userId: string, inviteId: string): Promise<void> {

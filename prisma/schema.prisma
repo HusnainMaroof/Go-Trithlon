@@ -146,9 +146,6 @@ model TeamInvite {
 
 
   @@unique([teamId, toUserId, role])
-
-  @@unique([teamId, fromUserId, toUserId])
-
   
   @@index([toUserId, status])
   @@index([fromUserId, status])

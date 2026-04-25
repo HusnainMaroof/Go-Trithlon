@@ -9,7 +9,6 @@ import React, {
 } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Filter,
   MapPin,
   Trophy,
   Waves,
@@ -18,40 +17,64 @@ import {
   UserPlus,
   Eye,
   CheckCircle2,
-  X,
-  Shield,
-  Loader2,
-  Activity,
   Zap,
-  Clock,
-  Calendar,
   Lock,
   Search,
 } from "lucide-react";
 import { getAllAthlete } from "../actions/dashboardAction";
 import { useStateContext } from "../context/useContext";
-import InviteAthleteModel from "./InviteAthleteModel";
+import InviteAthleteModal from "./InviteAthleteModel";
 import Link from "next/link";
-import { redirect } from "next/navigation";
 
-// ─── TYPES & CONFIG ─────────────────────────────────────────────────────────
+// ─── TYPES ───────────────────────────────────────────────────────────────────
 
 type Discipline = "SWIMMER" | "CYCLIST" | "RUNNER";
 
-export type ActionResponse = {
+type ActionResponse = {
   success: boolean;
   error: boolean;
   message: string | null;
-  data: any | null;
+  data: {
+    athletes: RawAthlete[];
+    sentInvites: SentInviteEntry[];
+    missingSlots: Discipline[];
+    hasTeam: boolean;
+  } | null;
 };
 
-// Flat athlete shape used throughout the component
+type RawAthlete = {
+  userToken: string;
+  email: string;
+  name: string | null;
+  inTeam: boolean;
+  isOnboard: boolean;
+  profileImage: string | null;
+  athleteData: {
+    id: string;
+    userId: string;
+    displayName: string | null;
+    locationCity: string | null;
+    disciplines: Discipline[];
+    swimTime100m: number | null;
+    cycleTime10km: number | null;
+    runTime5km: number | null;
+    experienceLevel: string | null;
+    trainingDaysPerWeek: number | null;
+    competitionLevel: string | null;
+  };
+};
+
+type SentInviteEntry = {
+  toUserId: string;
+  role: string;
+  id: string;
+};
+
 type FlatAthlete = {
   id: string;
   userId: string;
   userToken: string;
   email: string;
-  name: string;
   displayName: string;
   inTeam: boolean;
   isOnboard: boolean;
@@ -64,9 +87,20 @@ type FlatAthlete = {
   experienceLevel: string | null;
   trainingDaysPerWeek: number | null;
   competitionLevel: string | null;
+  invitedRoles: Discipline[];
 };
 
-export const DISCIPLINE_CONFIG: Record<Discipline, any> = {
+type DisciplineConfig = {
+  label: string;
+  icon: React.ElementType;
+  color: string;
+  bg: string;
+  border: string;
+};
+
+// ─── CONFIG ──────────────────────────────────────────────────────────────────
+
+export const DISCIPLINE_CONFIG: Record<Discipline, DisciplineConfig> = {
   SWIMMER: {
     label: "SWIMMER",
     icon: Waves,
@@ -92,55 +126,45 @@ export const DISCIPLINE_CONFIG: Record<Discipline, any> = {
 
 const ALL_DISCIPLINES: Discipline[] = ["SWIMMER", "CYCLIST", "RUNNER"];
 
-/**
- * Normalize raw API response into a flat shape the component can use directly.
- * The API returns { userToken, email, inTeam, profileImage, athleteData: { ... } }
- * This merges athleteData up to the top level so every field is directly accessible.
- */
-const flattenAthlete = (raw: any): FlatAthlete => {
-  const a = raw.athleteData ?? {};
+const initialState: ActionResponse = {
+  success: false,
+  error: false,
+  message: null,
+  data: null,
+};
 
-  // Priority: athleteData.displayName → user.name → email prefix → fallback
-  const resolvedName =
-    a.displayName?.trim() ||
-    raw.name?.trim() ||
-    raw.email?.split("@")[0] ||
-    "Athlete";
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
 
-  // Profile image: use Google photo if present, else null (card generates avatar)
-  const resolvedImage = raw.profileImage?.trim() || null;
-
+const flattenAthlete = (raw: RawAthlete): Omit<FlatAthlete, "invitedRoles"> => {
+  const a = raw.athleteData;
   return {
-    // identity
-    id: a.id ?? "",
-    userId: a.userId ?? "",
-    userToken: raw.userToken ?? "",
-    email: raw.email ?? "",
-    name: resolvedName,
-    displayName: resolvedName,
-
-    // status
-    inTeam: raw.inTeam ?? false,
-    isOnboard: raw.isOnboard ?? false,
-
-    // profile
-    profileImage: resolvedImage,
-    locationCity: a.locationCity ?? null,
+    id: a.id,
+    userId: a.userId,
+    userToken: raw.userToken,
+    email: raw.email,
+    displayName:
+      a.displayName?.trim() ||
+      raw.name?.trim() ||
+      raw.email?.split("@")[0] ||
+      "Athlete",
+    inTeam: raw.inTeam,
+    isOnboard: raw.isOnboard,
+    profileImage: raw.profileImage?.trim() || null,
+    locationCity: a.locationCity,
     disciplines: Array.isArray(a.disciplines) ? a.disciplines : [],
-
-    // performance
-    swimTime100m: a.swimTime100m ?? null,
-    cycleTime10km: a.cycleTime10km ?? null,
-    runTime5km: a.runTime5km ?? null,
-
-    // meta
-    experienceLevel: a.experienceLevel ?? null,
-    trainingDaysPerWeek: a.trainingDaysPerWeek ?? null,
-    competitionLevel: a.competitionLevel ?? null,
+    swimTime100m: a.swimTime100m,
+    cycleTime10km: a.cycleTime10km,
+    runTime5km: a.runTime5km,
+    experienceLevel: a.experienceLevel,
+    trainingDaysPerWeek: a.trainingDaysPerWeek,
+    competitionLevel: a.competitionLevel,
   };
 };
 
-// ─── SHIMMER ────────────────────────────────────────────────────────────────
+const avatarUrl = (name: string) =>
+  `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=18181b&color=ffffff&size=128&bold=true`;
+
+// ─── SHIMMER ─────────────────────────────────────────────────────────────────
 
 const Shimmer = () => (
   <motion.div
@@ -150,18 +174,35 @@ const Shimmer = () => (
   />
 );
 
-// ─── ATHLETE CARD ────────────────────────────────────────────────────────────
+// ─── ATHLETE CARD ─────────────────────────────────────────────────────────────
+
+type ButtonState = "unavailable" | "invited" | "no_slot" | "invitable";
 
 const AthleteCard = ({
   athlete,
+  missingSlots,
   onInvite,
-  onView,
 }: {
   athlete: FlatAthlete;
+  missingSlots: Discipline[];
   onInvite: (a: FlatAthlete) => void;
-  onView: (id: string) => void;
 }) => {
-  const isUnavailable = athlete.inTeam;
+  // Roles athlete has that the team still needs
+  const invitableRoles = athlete.disciplines.filter((d) =>
+    missingSlots.includes(d),
+  );
+
+  // All invitable roles already have a pending invite → fully invited
+  const fullyInvited =
+    invitableRoles.length > 0 &&
+    invitableRoles.every((d) => athlete.invitedRoles.includes(d));
+
+  const btnState: ButtonState = (() => {
+    if (athlete.inTeam) return "unavailable";
+    if (fullyInvited) return "invited";
+    if (invitableRoles.length === 0) return "no_slot";
+    return "invitable";
+  })();
 
   return (
     <motion.div
@@ -171,52 +212,43 @@ const AthleteCard = ({
       exit={{ opacity: 0, scale: 0.9 }}
       transition={{ duration: 0.3 }}
       className={`group relative bg-[#0a0a0a] border rounded-[1.25rem] p-5 flex flex-col gap-5 transition-all duration-300 shadow-xl ${
-        isUnavailable
+        btnState === "unavailable" || btnState === "no_slot"
           ? "border-zinc-800 opacity-75"
-          : "border-zinc-800 hover:border-blue-500/40 hover:shadow-blue-900/10"
+          : btnState === "invited"
+            ? "border-amber-500/20"
+            : "border-zinc-800 hover:border-blue-500/40"
       }`}
     >
-      {/* Top Header Row */}
+      {/* Avatar row */}
       <div className="flex justify-between items-start">
-        <div className="relative">
-          {!isUnavailable && (
-            <div className="absolute inset-0 bg-blue-500/10 blur-xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-          )}
-          <img
-            src={
-              athlete.profileImage ||
-              `https://ui-avatars.com/api/?name=${encodeURIComponent(athlete.displayName)}&background=18181b&color=ffffff&size=128&bold=true`
-            }
-            className={`w-14 h-14 rounded-full border border-zinc-700 object-cover relative z-10 transition-all duration-500 shadow-lg ${
-              isUnavailable
-                ? " opacity-70"
-                : "grayscale group-hover:grayscale-0"
-            }`}
-            alt={athlete.displayName}
-            onError={(e) => {
-              // fallback to generated avatar if image URL is broken
-              const target = e.currentTarget;
-              target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(athlete.displayName)}&background=18181b&color=ffffff&size=128&bold=true`;
-              target.onerror = null; // prevent infinite loop
-            }}
-          />
-          {!isUnavailable && (
-            <div className="absolute -bottom-1 -right-1 bg-blue-500 rounded-lg p-0.5 border-2 border-[#0a0a0a] z-20 shadow-lg">
-              <CheckCircle2 className="w-2.5 h-2.5 text-white" />
-            </div>
-          )}
-        </div>
+        <img
+          src={athlete.profileImage ?? avatarUrl(athlete.displayName)}
+          className="w-14 h-14 rounded-full border border-zinc-700 object-cover shadow-lg"
+          alt={athlete.displayName}
+          onError={(e) => {
+            const t = e.currentTarget;
+            t.src = avatarUrl(athlete.displayName);
+            t.onerror = null;
+          }}
+        />
 
-        {/* Status Badges */}
         <div className="flex flex-col items-end gap-1.5">
           <div className="px-2 py-0.5 rounded-md bg-zinc-900 border border-zinc-800 text-[9px] font-black text-zinc-400 uppercase tracking-widest">
             {athlete.experienceLevel ?? "—"}
           </div>
-          {isUnavailable ? (
+
+          {athlete.inTeam ? (
             <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-red-500/10 border border-red-500/20">
               <Lock className="w-2.5 h-2.5 text-red-400" />
               <span className="text-[8px] font-bold text-red-400 uppercase tracking-widest">
                 In Team
+              </span>
+            </div>
+          ) : fullyInvited ? (
+            <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/20">
+              <CheckCircle2 className="w-2.5 h-2.5 text-amber-400" />
+              <span className="text-[8px] font-bold text-amber-400 uppercase tracking-widest">
+                Invited
               </span>
             </div>
           ) : (
@@ -230,7 +262,7 @@ const AthleteCard = ({
         </div>
       </div>
 
-      {/* Info Row */}
+      {/* Name + location */}
       <div>
         <h3 className="text-lg font-bold text-white tracking-tight leading-none group-hover:text-blue-300 transition-colors truncate">
           {athlete.displayName}
@@ -238,23 +270,27 @@ const AthleteCard = ({
         <div className="flex items-center gap-1.5 mt-2">
           <MapPin className="w-3 h-3 text-zinc-500" />
           <span className="text-[11px] text-zinc-400 font-bold uppercase tracking-tight truncate">
-            {athlete.locationCity || "Unknown Location"}
+            {athlete.locationCity ?? "Unknown Location"}
           </span>
         </div>
       </div>
 
-      {/* Disciplines */}
+      {/* Discipline pills — amber dot if that role has a pending invite */}
       <div className="flex flex-wrap gap-1.5">
-        {athlete.disciplines.map((d: Discipline) => {
+        {athlete.disciplines.map((d) => {
           const cfg = DISCIPLINE_CONFIG[d];
-          if (!cfg) return null;
           const Icon = cfg.icon;
+          const hasPendingInvite = athlete.invitedRoles.includes(d);
           return (
             <div
               key={d}
-              className={`px-2 py-1 rounded-md border text-[9px] font-black uppercase tracking-wider ${cfg.bg} ${cfg.color} ${cfg.border} flex items-center gap-1 shadow-sm`}
+              className={`px-2 py-1 rounded-md border text-[9px] font-black uppercase tracking-wider flex items-center gap-1 shadow-sm ${cfg.bg} ${cfg.color} ${cfg.border}`}
             >
-              <Icon className="w-2.5 h-2.5" /> {cfg.label}
+              <Icon className="w-2.5 h-2.5" />
+              {cfg.label}
+              {hasPendingInvite && (
+                <span className="ml-0.5 w-1.5 h-1.5 rounded-full bg-amber-400 inline-block shrink-0" />
+              )}
             </div>
           );
         })}
@@ -263,16 +299,24 @@ const AthleteCard = ({
       {/* Actions */}
       <div className="flex gap-2.5 mt-auto pt-2">
         <button
-          onClick={() => !isUnavailable && onInvite(athlete)}
-          disabled={isUnavailable}
+          onClick={() => btnState === "invitable" && onInvite(athlete)}
+          disabled={btnState !== "invitable"}
           className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-[11px] font-black uppercase tracking-wider rounded-xl transition-all shadow-md ${
-            isUnavailable
+            btnState === "unavailable" || btnState === "no_slot"
               ? "bg-zinc-900 border border-zinc-800 text-zinc-600 cursor-not-allowed"
-              : "bg-blue-500/10 text-blue-400 border border-blue-500/30 hover:bg-blue-500 hover:text-white hover:border-blue-400 active:scale-95 cursor-pointer"
+              : btnState === "invited"
+                ? "bg-amber-500/10 border border-amber-500/20 text-amber-400 cursor-not-allowed"
+                : "bg-blue-500/10 text-blue-400 border border-blue-500/30 hover:bg-blue-500 hover:text-white hover:border-blue-400 active:scale-95 cursor-pointer"
           }`}
         >
-          {isUnavailable ? (
+          {btnState === "unavailable" ? (
             "Unavailable"
+          ) : btnState === "invited" ? (
+            <>
+              <CheckCircle2 className="w-3.5 h-3.5" /> Invited
+            </>
+          ) : btnState === "no_slot" ? (
+            "Slot Filled"
           ) : (
             <>
               <UserPlus className="w-3.5 h-3.5" /> Invite
@@ -280,68 +324,119 @@ const AthleteCard = ({
           )}
         </button>
 
-        <button
-          onClick={() =>
-            redirect(
-              `/dashboard/athletes/athletesprofile/${athlete?.userToken}`,
-            )
-          }
-          className="flex items-center justify-center px-3.5 bg-zinc-900 border border-zinc-800 text-zinc-400 rounded-xl hover:text-white hover:border-zinc-600 hover:bg-zinc-800 transition-all shadow-md cursor-pointer"
-        >
-          <Eye className="w-4 h-4" />
-        </button>
+        <Link href={`/dashboard/athletes/athletesprofile/${athlete.userToken}`}>
+          <button className="h-full flex items-center justify-center px-3.5 bg-zinc-900 border border-zinc-800 text-zinc-400 rounded-xl hover:text-white hover:border-zinc-600 hover:bg-zinc-800 transition-all shadow-md cursor-pointer">
+            <Eye className="w-4 h-4" />
+          </button>
+        </Link>
       </div>
     </motion.div>
   );
 };
 
-// ─── MAIN COMPONENT ─────────────────────────────────────────────────────────
+// ─── SKELETON CARDS ──────────────────────────────────────────────────────────
 
-const initialState: ActionResponse = {
-  success: false,
-  error: false,
-  message: null,
-  data: null,
-};
+const SkeletonGrid = () => (
+  <motion.div
+    key="loading"
+    initial={{ opacity: 0 }}
+    animate={{ opacity: 1 }}
+    exit={{ opacity: 0 }}
+    className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5"
+  >
+    {Array.from({ length: 8 }).map((_, i) => (
+      <div
+        key={i}
+        className="h-[280px] bg-zinc-900/30 border border-zinc-800/80 rounded-[1.25rem] relative overflow-hidden flex flex-col p-5"
+      >
+        <Shimmer />
+        <div className="flex justify-between items-start mb-5">
+          <div className="w-14 h-14 bg-zinc-800/50 rounded-full" />
+          <div className="w-16 h-4 bg-zinc-800/50 rounded" />
+        </div>
+        <div className="w-3/4 h-5 bg-zinc-800/50 rounded mb-2" />
+        <div className="w-1/2 h-3 bg-zinc-800/50 rounded mb-5" />
+        <div className="flex gap-2 mb-auto">
+          <div className="w-16 h-6 bg-zinc-800/50 rounded" />
+          <div className="w-16 h-6 bg-zinc-800/50 rounded" />
+        </div>
+        <div className="flex gap-2 pt-4">
+          <div className="flex-1 h-9 bg-zinc-800/50 rounded-xl" />
+          <div className="w-12 h-9 bg-zinc-800/50 rounded-xl" />
+        </div>
+      </div>
+    ))}
+  </motion.div>
+);
+
+// ─── MAIN COMPONENT ──────────────────────────────────────────────────────────
 
 export default function AthleteMarketplace() {
   const { user } = useStateContext();
   const [state, dispatcher, isPending] = useActionState<ActionResponse>(
-    getAllAthlete,
+    getAllAthlete as any,
     initialState,
   );
 
   const [filter, setFilter] = useState<Discipline | "ALL">("ALL");
   const [inviteTarget, setInviteTarget] = useState<FlatAthlete | null>(null);
 
-  // Fetch on mount
+  // Initial load
   useEffect(() => {
     startTransition(() => {
       dispatcher();
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Flatten raw API data once, filter out the current logged-in user by userToken
+  const rawAthletes = state.data?.athletes ?? [];
+  const sentInvites: SentInviteEntry[] = state.data?.sentInvites ?? [];
+  const missingSlots: Discipline[] = state.data?.missingSlots ?? [];
+  const hasTeam: boolean = state.data?.hasTeam ?? false;
+
+  // O(1) lookup: userId → Set of invited roles
+  const sentInviteMap = useMemo(() => {
+    const map = new Map<string, Set<Discipline>>();
+    for (const inv of sentInvites) {
+      if (!map.has(inv.toUserId)) map.set(inv.toUserId, new Set());
+      map.get(inv.toUserId)!.add(inv.role as Discipline);
+    }
+    return map;
+  }, [sentInvites]);
+
+  // Flatten, exclude self, annotate invitedRoles
   const athletes: FlatAthlete[] = useMemo(() => {
-    if (!Array.isArray(state.data)) return [];
-    return state.data
+    if (!Array.isArray(rawAthletes)) return [];
+    return rawAthletes
       .map(flattenAthlete)
-      .filter((a) => a.userToken !== user?.userToken);
-  }, [state.data, user?.userToken]);
+      .filter((a) => a.userToken !== user?.userToken)
+      .map((a) => ({
+        ...a,
+        invitedRoles: Array.from(sentInviteMap.get(a.userId) ?? []).filter(
+          (r): r is Discipline => a.disciplines.includes(r),
+        ),
+      }));
+  }, [rawAthletes, user?.userToken, sentInviteMap]);
 
   const filteredAthletes = useMemo(() => {
     if (filter === "ALL") return athletes;
     return athletes.filter((a) => a.disciplines.includes(filter));
   }, [athletes, filter]);
 
+  // Called by modal after a successful invite — closes modal + refetches
+  const handleInviteSent = () => {
+    setInviteTarget(null);
+    startTransition(() => {
+      dispatcher();
+    });
+  };
+
   return (
     <div className="min-h-screen bg-[#000000] text-zinc-400 font-sans p-4 sm:p-6 md:p-12 overflow-x-hidden selection:bg-blue-500/30 relative">
-      {/* Background Decor */}
       <div className="fixed top-0 left-1/4 w-[500px] h-[500px] bg-blue-600/[0.03] blur-[150px] rounded-full pointer-events-none" />
       <div className="fixed bottom-0 right-1/4 w-[400px] h-[400px] bg-indigo-600/[0.02] blur-[120px] rounded-full pointer-events-none" />
 
       <div className="max-w-6xl mx-auto space-y-12 relative z-10">
-        {/* ─── HEADER ─── */}
+        {/* Header */}
         <header className="flex flex-col lg:flex-row justify-between items-start lg:items-end gap-8">
           <div className="space-y-4">
             <div className="inline-flex items-center gap-2 px-3 py-1 bg-[#0a0a0a] border border-zinc-800 rounded-lg text-[9px] font-black uppercase tracking-[0.25em] text-blue-400 shadow-[0_5px_15px_rgba(0,0,0,0.4)]">
@@ -361,7 +456,7 @@ export default function AthleteMarketplace() {
             </p>
           </div>
 
-          {/* Filters */}
+          {/* Discipline filter */}
           <div className="bg-[#0a0a0a] border border-zinc-800 rounded-2xl p-1.5 flex flex-wrap gap-1 shadow-[0_20px_40px_rgba(0,0,0,0.6)]">
             <button
               onClick={() => setFilter("ALL")}
@@ -389,43 +484,17 @@ export default function AthleteMarketplace() {
           </div>
         </header>
 
-        {/* ─── DATA GRID ─── */}
+        {/* Grid */}
         <AnimatePresence mode="wait">
           {isPending && !state.data ? (
-            <motion.div
-              key="loading"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5"
-            >
-              {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
-                <div
-                  key={i}
-                  className="h-[260px] bg-zinc-900/30 border border-zinc-800/80 rounded-[1.25rem] relative overflow-hidden flex flex-col p-5"
-                >
-                  <Shimmer />
-                  <div className="flex justify-between items-start mb-5">
-                    <div className="w-14 h-14 bg-zinc-800/50 rounded-2xl" />
-                    <div className="w-16 h-4 bg-zinc-800/50 rounded" />
-                  </div>
-                  <div className="w-3/4 h-5 bg-zinc-800/50 rounded mb-2" />
-                  <div className="w-1/2 h-3 bg-zinc-800/50 rounded mb-5" />
-                  <div className="flex gap-2 mb-auto">
-                    <div className="w-12 h-6 bg-zinc-800/50 rounded" />
-                    <div className="w-12 h-6 bg-zinc-800/50 rounded" />
-                  </div>
-                  <div className="flex gap-2 pt-4">
-                    <div className="flex-1 h-9 bg-zinc-800/50 rounded-xl" />
-                    <div className="w-12 h-9 bg-zinc-800/50 rounded-xl" />
-                  </div>
-                </div>
-              ))}
-            </motion.div>
+            <SkeletonGrid key="skeleton" />
           ) : filteredAthletes.length > 0 ? (
             <motion.div
               key="grid"
               layout
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
               className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5"
             >
               <AnimatePresence>
@@ -433,8 +502,8 @@ export default function AthleteMarketplace() {
                   <AthleteCard
                     key={athlete.id}
                     athlete={athlete}
+                    missingSlots={missingSlots}
                     onInvite={setInviteTarget}
-                    onView={(id) => console.log("Profile", id)}
                   />
                 ))}
               </AnimatePresence>
@@ -454,20 +523,19 @@ export default function AthleteMarketplace() {
                 No Athletes Found
               </h4>
               <p className="text-zinc-500 text-sm max-w-sm">
-                There are currently no athletes matching your specific
-                discipline filter. Try broadening your search.
+                No athletes matching this discipline filter right now.
               </p>
               <button
                 onClick={() => setFilter("ALL")}
                 className="mt-2 px-6 py-2.5 bg-white text-black text-xs font-bold uppercase tracking-wider rounded-xl hover:bg-zinc-200 transition-colors cursor-pointer"
               >
-                Clear Filters
+                Clear Filter
               </button>
             </motion.div>
           )}
         </AnimatePresence>
 
-        {/* ─── FOOTER BANNER ─── */}
+        {/* Footer */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
@@ -490,12 +558,16 @@ export default function AthleteMarketplace() {
         </motion.div>
       </div>
 
-      {/* ─── INVITE MODAL ─── */}
+      {/* Invite modal */}
       <AnimatePresence>
         {inviteTarget && (
-          <InviteAthleteModel
-            setInviteTarget={setInviteTarget}
+          <InviteAthleteModal
+            key="invite-modal"
             inviteTarget={inviteTarget}
+            missingSlots={missingSlots}
+            hasTeam={hasTeam}
+            setInviteTarget={setInviteTarget}
+            onInviteSent={handleInviteSent}
             DISCIPLINE_CONFIG={DISCIPLINE_CONFIG}
           />
         )}

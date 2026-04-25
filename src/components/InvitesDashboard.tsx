@@ -413,7 +413,7 @@ function SentInviteCard({ invite }: { invite: SentInvite }) {
             </div>
             <div>
               <h3 className="text-base font-black text-white tracking-tight leading-none">
-                {invite.team.name}
+                {invite?.team?.name}
               </h3>
               <div className="flex items-center gap-1.5 mt-1">
                 <Clock className="w-3 h-3 text-zinc-600" />
