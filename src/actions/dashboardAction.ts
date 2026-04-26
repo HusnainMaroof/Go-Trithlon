@@ -27,104 +27,7 @@ export type ActionResponse<T = any> = {
   data: T | null;
 };
 
-export const setprofileAction = catchErrors(
-  async (
-    prevState: ActionResponse,
-    payload: setProfilePayload,
-  ): Promise<ActionResponse> => {
-    const getUser = await getCurrentUser();
-    const sessionId = getUser.authsuccess.data.sessionId;
 
-    const cacheKey = `auth_session:${sessionId}`;
-
-    const cachedUser = await setRedis.get(cacheKey);
-
-    const sessionData =
-      typeof cachedUser === "string" ? JSON.parse(cachedUser) : cachedUser;
-
-    if (!sessionData?.userId) {
-      return {
-        success: false,
-        error: true,
-        message: "Session not found",
-        data: null,
-      };
-    }
-
-    const createdProfile = await prisma.athleteProfile.create({
-      data: {
-        userId: sessionData.userId,
-        displayName: payload.displayName ?? null,
-        locationCity: payload.locationCity ?? null,
-
-        // IMPORTANT: normalize field name consistently
-        disciplines: payload.disciplines, // must always be array of enum
-
-        experienceLevel: payload.experienceLevel,
-        competitionLevel: payload.competitionLevel,
-        trainingDaysPerWeek: payload.trainingDaysPerWeek,
-        cycleTime10km: payload.cycleTime10km ?? null,
-        runTime5km: payload.runTime5km ?? null,
-        swimTime100m: payload.swimTime100m ?? null,
-      },
-    });
-
-    await prisma.user.update({
-      where: { id: sessionData.userId },
-      data: { is_Onboard: true },
-    });
-
-    // 🔥 IMPORTANT: normalize session shape (THIS FIXES YOUR CLAIM SLOT PROBLEMS)
-    const updatedSessionData = {
-      ...sessionData,
-      isOnboard: true,
-
-      athleteData: {
-        id: createdProfile.id,
-        userId: createdProfile.userId,
-        displayName: createdProfile.displayName,
-        disciplines: createdProfile.disciplines, // ALWAYS THIS NAME
-        swimTime100m: createdProfile.swimTime100m,
-        cycleTime10km: createdProfile.cycleTime10km,
-        runTime5km: createdProfile.runTime5km,
-        experienceLevel: createdProfile.experienceLevel,
-        trainingDaysPerWeek: createdProfile.trainingDaysPerWeek,
-        competitionLevel: createdProfile.competitionLevel,
-        locationCity: createdProfile.locationCity,
-        createdAt: createdProfile.createdAt,
-        updatedAt: createdProfile.updatedAt,
-      },
-    };
-
-    const ttl = await setRedis.ttl(cacheKey);
-
-    if (ttl > 0) {
-      await setRedis.set(cacheKey, JSON.stringify(updatedSessionData), {
-        ex: ttl,
-      });
-    } else {
-      await setRedis.set(cacheKey, JSON.stringify(updatedSessionData));
-    }
-
-
-// In setprofileAction, after prisma.athleteProfile.create succeeds
-await addAthleteToPool(sessionData.userId, createdProfile, {
-  userToken: sessionData.userToken,
-  email: sessionData.email,
-  name: sessionData.displayName,
-  inTeam: false,
-  profileImage: sessionData.profileImage,
-});
-
-
-    return {
-      success: true,
-      error: false,
-      message: "Profile created successfully",
-      data: updatedSessionData,
-    };
-  },
-);
 
 export const teamAction = catchErrors(
   async (
@@ -163,7 +66,7 @@ export const teamAction = catchErrors(
         return getTeamService(userId);
 
       case "CREATE_TEAM":
-        return createTeamService(userId, payload.teamName); 
+        return createTeamService(userId, payload.teamName);
 
       case "CLAIM_SLOT":
         return claimSlotService(
@@ -188,11 +91,6 @@ export const teamAction = catchErrors(
   },
 );
 
-
-
-
-
-
 export const getAthleteDataAction = catchErrors(
   async (
     _prevState: ActionResponse,
@@ -213,8 +111,10 @@ export const getAthleteDataAction = catchErrors(
 
     let sessionData = null;
     if (cachedUser) {
+      
       sessionData =
-        typeof cachedUser === "string" ? JSON.parse(cachedUser) : cachedUser;
+      typeof cachedUser === "string" ? JSON.parse(cachedUser) : cachedUser;
+      // console.log("athlete data fetch cached data" ,sessionData );
     }
 
     // 2. If session exists in cache and has athleteData, return it immediately
@@ -263,8 +163,6 @@ export const getAthleteDataAction = catchErrors(
   },
 );
 
-
-
 export const getAllAthlete = catchErrors(async (): Promise<ActionResponse> => {
   // Authenticate — marketplace needs user context for invite + team status
   const getUser = await getCurrentUser();
@@ -275,7 +173,9 @@ export const getAllAthlete = catchErrors(async (): Promise<ActionResponse> => {
   // Round-trip 1: athlete index + sent invites + team — all parallel
   const [userIds, cachedSent, cachedTeam] = await Promise.all([
     setRedis.lrange("athletes:index", 0, 99),
-    userId ? setRedis.get(`invites:sent:${userId}`) : Promise.resolve(null),
+    userId
+      ? setRedis.get(`invites:sent:pending:${userId}`)
+      : Promise.resolve(null),
     userId ? setRedis.get(`myteam:${userId}`) : Promise.resolve(null),
   ]);
 
@@ -300,7 +200,7 @@ export const getAllAthlete = catchErrors(async (): Promise<ActionResponse> => {
         .then(async (result) => {
           sentInvites = result;
           await setRedis.set(
-            `invites:sent:${userId}`,
+            `invites:sent:pending:${userId}`,
             JSON.stringify(result),
             { ex: 60 * 5 },
           );
@@ -320,11 +220,9 @@ export const getAllAthlete = catchErrors(async (): Promise<ActionResponse> => {
         .then(async (result) => {
           team = result ?? null;
           if (result) {
-            await setRedis.set(
-              `myteam:${userId}`,
-              JSON.stringify(result),
-              { ex: 60 * 60 * 24 * 7 },
-            );
+            await setRedis.set(`myteam:${userId}`, JSON.stringify(result), {
+              ex: 60 * 60 * 24 * 7,
+            });
           }
         }),
     );
@@ -387,11 +285,9 @@ export const getAllAthlete = catchErrors(async (): Promise<ActionResponse> => {
       const pipeline = setRedis.pipeline();
       for (const athlete of athletes) {
         const uid = athlete.athleteData.userId;
-        pipeline.set(
-          `athletes:user:${uid}`,
-          JSON.stringify(athlete),
-          { ex: 60 * 60 * 24 * 7 },
-        );
+        pipeline.set(`athletes:user:${uid}`, JSON.stringify(athlete), {
+          ex: 60 * 60 * 24 * 7,
+        });
         pipeline.lpush("athletes:index", uid);
       }
       pipeline.expire("athletes:index", 60 * 60);
@@ -413,8 +309,8 @@ export const getAllAthlete = catchErrors(async (): Promise<ActionResponse> => {
     message: "",
     data: {
       athletes,
-      sentInvites,   
-      missingSlots,  
+      sentInvites,
+      missingSlots,
       hasTeam: !!team,
     },
   };

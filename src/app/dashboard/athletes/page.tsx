@@ -5,11 +5,7 @@ import { redirect } from "next/navigation";
 import React from "react";
 
 const page = async () => {
-  const user = await getCurrentUser();
 
-  if (!user.authsuccess.data.sessionId) {
-    redirect("/");
-  }
   return (
     <div className="w-full h-full">
       <NavBar />

@@ -50,53 +50,85 @@ enum InviteStatus {
 // ─── Models ──────────────────────────────────────────────
 
 model User {
-  id         String     @id @default(uuid())
-  email      String     @unique
-  name       String?
-  status     UserStatus @default(PENDING)
-  createdAt  DateTime   @default(now())
-  updatedAt  DateTime   @updatedAt
-  userToken  String?    @unique
-  google_id  String?    @unique
-  is_Onboard Boolean    @default(false)
-  inTeam Boolean    @default(false)
-profileImage              String?   
+  id            String     @id @default(uuid())
+  email         String     @unique
+  name          String?
+  status        UserStatus @default(PENDING)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  userToken     String?    @unique
+  google_id     String?    @unique
+  is_Onboard    Boolean    @default(false)
+  inTeam        Boolean    @default(false)
+  profileImage  String?
+
   athleteProfile  AthleteProfile?
-ownedTeams MyTeam[] @relation("TeamOwner")
+  ownedTeams      MyTeam[]       @relation("TeamOwner")
   teamMemberships MyTeamMember[]
   sentInvites     TeamInvite[]   @relation("InviteSender")
   receivedInvites TeamInvite[]   @relation("InviteReceiver")
-  
 }
 
 model AthleteProfile {
-  id          String   @id @default(uuid())
-  userId      String   @unique
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id           String   @id @default(uuid())
+  userId       String   @unique
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  displayName String?
+  displayName  String?
   locationCity String?
 
-  disciplines Discipline[]
+  disciplines  Discipline[]
 
-  // performance per discipline (only relevant ones filled)
-  swimTime100m  Float?
-  cycleTime10km Float?
-  runTime5km    Float?
+  // kept for future use — not collected in onboarding v2
 
-  experienceLevel     ExperienceLevel
   trainingDaysPerWeek Int?
   competitionLevel    CompetitionLevel?
 
+  experienceLevel ExperienceLevel
+
+  // new relations
+  raceResults  RaceResult[]
+  achievements Achievement[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// Stores one best time per discipline+distance per athlete.
+// Multiple rows allowed (e.g. two different marathon entries in future).
+model RaceResult {
+  id         String         @id @default(uuid())
+  profileId  String
+  profile    AthleteProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  discipline Discipline
+  distance   String     // "5K" | "10K" | "Half Marathon" | "Full Marathon" | "750m" | "1500m" | "5K Open Water" | "20K" | "40K" | "90K" | "180K"
+  timeSeconds Float     // always stored in seconds, formatted for display
+
+  createdAt  DateTime   @default(now())
+
+  @@index([profileId])
+}
+
+// Free-form athlete achievements — separate from race results.
+model Achievement {
+  id          String         @id @default(uuid())
+  profileId   String
+  profile     AthleteProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  title       String
+  description String?
+
+  createdAt   DateTime       @default(now())
+
+  @@index([profileId])
 }
 
 model MyTeam {
   id        String     @id @default(uuid())
   name      String
   ownerId   String
-owner User @relation("TeamOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  owner     User       @relation("TeamOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   status    TeamStatus @default(OPEN)
 
   members   MyTeamMember[]
@@ -113,16 +145,12 @@ model MyTeamMember {
   team     MyTeam     @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
   userId   String
-user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user     User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  // ✅ ONE row = ONE role
-  // same user can have TWO rows (two roles) in same team
   role     Discipline
 
   joinedAt DateTime   @default(now())
 
-  // ✅ one role slot per team — prevents duplicate role
-  // userId NOT in unique → allows same user in multiple roles
   @@unique([teamId, role])
 }
 
@@ -144,10 +172,7 @@ model TeamInvite {
   createdAt  DateTime     @default(now())
   updatedAt  DateTime     @updatedAt
 
-
   @@unique([teamId, toUserId, role])
-  
   @@index([toUserId, status])
   @@index([fromUserId, status])
 }
-

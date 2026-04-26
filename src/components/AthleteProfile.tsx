@@ -17,105 +17,457 @@ import {
   Share2,
   Check,
   Activity,
-  Calendar,
   Gauge,
   AlertCircle,
   Loader2,
   Clock,
+  Plus,
+  X,
+  ChevronRight,
+  Timer,
+  Medal,
+  Star,
 } from "lucide-react";
 import { getAthleteDataAction } from "../actions/dashboardAction";
 
-// ─── TYPES & MOCKS (Self-contained for Preview) ──────────────────────────────
+// ─── TYPES ───────────────────────────────────────────────────────────────────
 
 type Discipline = "SWIMMER" | "CYCLIST" | "RUNNER";
+type ExperienceLevel = "BEGINNER" | "INTERMEDIATE" | "ADVANCED";
+type CompetitionLevel = "NONE" | "LOCAL" | "NATIONAL" | "PROFESSIONAL";
+
+interface RaceResult {
+  discipline: Discipline;
+  distance: string;
+  timeSeconds: number;
+}
+
+interface Achievement {
+  id?: string;
+  title: string;
+  description?: string | null;
+}
+
+interface AthleteData {
+  id: string;
+  userId: string;
+  displayName: string | null;
+  disciplines: Discipline[];
+  experienceLevel: ExperienceLevel;
+  trainingDaysPerWeek: number | null;
+  competitionLevel: CompetitionLevel | null;
+  locationCity: string | null;
+  createdAt: string;
+  updatedAt: string;
+  raceResults: RaceResult[];
+  achievements: Achievement[];
+}
+
+interface ProfileData {
+  userId: string;
+  userToken: string;
+  email: string;
+  name: string | null;
+  inTeam: boolean;
+  isOnboard: boolean;
+  profileImage: string | null;
+  athleteData: AthleteData;
+}
 
 interface ActionResponse {
   success: boolean;
   error: boolean;
   message: string | null;
-  data: any;
+  data: ProfileData | null;
 }
 
-// ─── CONFIG ─────────────────────────────────────────────────────────────────
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
 
-const DISCIPLINE_THEMES: Record<Discipline, any> = {
+function formatTimeParts(totalSeconds: number): {
+  h: number;
+  m: number;
+  s: number;
+} {
+  return {
+    h: Math.floor(totalSeconds / 3600),
+    m: Math.floor((totalSeconds % 3600) / 60),
+    s: totalSeconds % 60,
+  };
+}
+
+// ─── CONFIG ──────────────────────────────────────────────────────────────────
+
+type DisciplineTheme = {
+  icon: React.ElementType;
+  color: string;
+  colorHex: string;
+  bg: string;
+  border: string;
+  accent: string;
+  glow: string;
+  label: string;
+};
+
+const DISCIPLINE_THEMES: Record<Discipline, DisciplineTheme> = {
   SWIMMER: {
     icon: Waves,
-    color: "text-cyan-400",
-    bg: "bg-cyan-500/5",
-    border: "border-cyan-500/10",
+    color: "text-cyan-300",
+    colorHex: "#67e8f9",
+    bg: "bg-cyan-400/[0.07]",
+    border: "border-cyan-400/25",
+    accent: "from-transparent via-cyan-400/70 to-transparent",
+    glow: "shadow-[0_0_12px_rgba(103,232,249,0.45)]",
+    label: "Swimmer",
   },
   CYCLIST: {
     icon: Bike,
-    color: "text-blue-400",
-    bg: "bg-blue-500/5",
-    border: "border-blue-500/10",
+    color: "text-orange-300",
+    colorHex: "#fdba74",
+    bg: "bg-orange-400/[0.07]",
+    border: "border-orange-400/25",
+    accent: "from-transparent via-orange-400/70 to-transparent",
+    glow: "shadow-[0_0_12px_rgba(251,146,60,0.45)]",
+    label: "Cyclist",
   },
   RUNNER: {
     icon: Footprints,
-    color: "text-indigo-400",
-    bg: "bg-indigo-500/5",
-    border: "border-indigo-500/10",
+    color: "text-lime-300",
+    colorHex: "#bef264",
+    bg: "bg-lime-400/[0.07]",
+    border: "border-lime-400/25",
+    accent: "from-transparent via-lime-400/70 to-transparent",
+    glow: "shadow-[0_0_12px_rgba(163,230,53,0.45)]",
+    label: "Runner",
   },
+};
+
+const EXPERIENCE_META: Record<
+  ExperienceLevel,
+  { color: string; label: string }
+> = {
+  BEGINNER: { color: "text-zinc-300", label: "Beginner" },
+  INTERMEDIATE: { color: "text-sky-300", label: "Intermediate" },
+  ADVANCED: { color: "text-violet-300", label: "Advanced" },
+};
+
+const COMPETITION_META: Record<
+  CompetitionLevel,
+  { color: string; label: string }
+> = {
+  NONE: { color: "text-zinc-600", label: "None" },
+  LOCAL: { color: "text-zinc-300", label: "Local" },
+  NATIONAL: { color: "text-sky-300", label: "National" },
+  PROFESSIONAL: { color: "text-amber-300", label: "Professional" },
+};
+
+// stat icon themes: key = label string
+const STAT_ICON_THEME: Record<string, string> = {
+  Experience:
+    "text-violet-300 bg-violet-500/10 border-violet-500/25 shadow-[0_0_10px_rgba(167,139,250,0.3)]",
+  Competition:
+    "text-sky-300 bg-sky-500/10 border-sky-500/25 shadow-[0_0_10px_rgba(125,211,252,0.3)]",
+  "Training Days / Week":
+    "text-lime-300 bg-lime-500/10 border-lime-500/25 shadow-[0_0_10px_rgba(163,230,53,0.3)]",
 };
 
 const initialState: ActionResponse = {
   success: false,
   error: false,
-  message: "",
+  message: null,
   data: null,
 };
 
-// ─── ANIMATION VARIANTS ─────────────────────────────────────────────────────
+// ─── ANIMATION VARIANTS ──────────────────────────────────────────────────────
 
-const containerVariants = {
+const container = {
   hidden: { opacity: 0 },
   visible: {
     opacity: 1,
-    transition: { staggerChildren: 0.05, delayChildren: 0.1 },
+    transition: { staggerChildren: 0.06, delayChildren: 0.1 },
   },
 };
 
-const cardVariants = {
-  hidden: { opacity: 0, y: 10 },
+const item = {
+  hidden: { opacity: 0, y: 12 },
   visible: {
     opacity: 1,
     y: 0,
-    transition: { type: "spring", stiffness: 100, damping: 20 },
+    transition: { type: "spring", stiffness: 120, damping: 22 },
   },
-} as const ;
+} as const;
 
-// ─── UI COMPONENTS ──────────────────────────────────────────────────────────
+// ─── SUB-COMPONENTS ──────────────────────────────────────────────────────────
 
-const StatCard = ({ label, value, icon: Icon, colorClass, subtitle }: any) => (
-  <motion.div
-    variants={cardVariants}
-    className="p-6 bg-zinc-900/20 border border-zinc-800/50 rounded-3xl flex flex-col gap-4 transition-all duration-300 hover:border-zinc-700/50 group shadow-sm"
-  >
-    <div className="flex justify-between items-start">
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="text-[9px] font-black uppercase tracking-[0.3em] text-zinc-600 mb-4 px-1">
+      {children}
+    </p>
+  );
+}
+
+// ── Race Result Row ──────────────────────────────────────────────────────────
+
+function RaceResultRow({ result }: { result: RaceResult }) {
+  const theme = DISCIPLINE_THEMES[result.discipline];
+  const { h, m, s } = formatTimeParts(result.timeSeconds);
+
+  return (
+    <div
+      className={`flex items-center gap-4 p-4 rounded-xl border transition-all duration-200 hover:brightness-110 ${theme.bg} ${theme.border}`}
+    >
       <div
-        className={`w-10 h-10 rounded-xl ${colorClass.replace("text", "bg")}/10 flex items-center justify-center`}
+        className={`w-8 h-8 rounded-lg bg-black/50 border flex items-center justify-center shrink-0 ${theme.border} ${theme.glow}`}
       >
-        <Icon className={`w-5 h-5 ${colorClass}`} />
+        <Timer className={`w-3.5 h-3.5 ${theme.color}`} />
       </div>
-      {subtitle && (
-        <span className="text-[9px] font-medium text-zinc-600 uppercase tracking-widest">
-          {subtitle}
-        </span>
-      )}
-    </div>
-    <div>
-      <p className="text-[10px] font-semibold uppercase text-zinc-500 tracking-wider mb-1">
-        {label}
-      </p>
-      <h4 className="text-2xl font-bold text-white tracking-tight leading-none">
-        {value}
-      </h4>
-    </div>
-  </motion.div>
-);
 
-// ─── MAIN COMPONENT ─────────────────────────────────────────────────────────
+      <div className="flex-1 min-w-0">
+        <p
+          className={`text-[11px] font-black uppercase tracking-widest ${theme.color}`}
+        >
+          {result.distance}
+        </p>
+        <p className="text-[9px] text-zinc-600 font-bold mt-0.5">
+          {result.discipline.charAt(0) +
+            result.discipline.slice(1).toLowerCase()}
+        </p>
+      </div>
+
+      {/* Time display */}
+      <div className="flex items-end gap-0.5 shrink-0">
+        {h > 0 && (
+          <>
+            <span
+              className={`text-xl font-black leading-none tabular-nums ${theme.color}`}
+            >
+              {h}
+            </span>
+            <span className="text-[9px] text-zinc-600 font-bold mb-0.5 mr-1">
+              h
+            </span>
+          </>
+        )}
+        <span
+          className={`text-xl font-black leading-none tabular-nums ${theme.color}`}
+        >
+          {String(m).padStart(h > 0 ? 2 : 1, "0")}
+        </span>
+        <span className="text-[9px] text-zinc-600 font-bold mb-0.5 mr-0.5">
+          m
+        </span>
+        <span className="text-xl font-black text-white leading-none tabular-nums">
+          {String(s).padStart(2, "0")}
+        </span>
+        <span className="text-[9px] text-zinc-600 font-bold mb-0.5">s</span>
+      </div>
+    </div>
+  );
+}
+
+// ── Discipline Race Group ────────────────────────────────────────────────────
+
+function DisciplineRaceGroup({
+  discipline,
+  results,
+}: {
+  discipline: Discipline;
+  results: RaceResult[];
+}) {
+  const theme = DISCIPLINE_THEMES[discipline];
+  const Icon = theme.icon;
+
+  return (
+    <div className="relative bg-[#0a0a0a] border border-zinc-800/70 rounded-2xl overflow-hidden">
+      <div
+        className={`absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r ${theme.accent}`}
+      />
+
+      <div className="p-5">
+        <div className="flex items-center gap-3 mb-4">
+          <div
+            className={`w-9 h-9 rounded-xl bg-black border flex items-center justify-center ${theme.border} ${theme.glow}`}
+          >
+            <Icon className={`w-4 h-4 ${theme.color}`} />
+          </div>
+          <div>
+            <p
+              className={`text-[11px] font-black uppercase tracking-widest ${theme.color}`}
+            >
+              {theme.label}
+            </p>
+            <p className="text-[9px] text-zinc-600 font-bold">
+              {results.length} result{results.length !== 1 ? "s" : ""}
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-2.5">
+          {results.map((r, i) => (
+            <RaceResultRow
+              key={`${r.discipline}-${r.distance}-${i}`}
+              result={r}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Achievement Card ─────────────────────────────────────────────────────────
+
+function AchievementCard({ achievement }: { achievement: Achievement }) {
+  return (
+    <div className="flex items-start gap-3 p-4 bg-amber-400/[0.05] border border-amber-400/20 rounded-xl hover:border-amber-400/35 transition-all duration-200">
+      <div className="w-8 h-8 rounded-lg bg-black/60 border border-amber-400/30 flex items-center justify-center shrink-0 mt-0.5 shadow-[0_0_10px_rgba(251,191,36,0.3)]">
+        <Star className="w-3.5 h-3.5 text-amber-300" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-bold text-white leading-tight">
+          {achievement.title}
+        </p>
+        {achievement.description && (
+          <p className="text-[11px] text-zinc-500 mt-1 leading-relaxed">
+            {achievement.description}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Add Achievement Form ─────────────────────────────────────────────────────
+
+function AddAchievementForm({ onAdd }: { onAdd: (a: Achievement) => void }) {
+  const [open, setOpen] = useState(false);
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = async () => {
+    const trimmed = title.trim();
+    if (!trimmed) return;
+    setSaving(true);
+    // TODO: replace timeout with addAchievementAction(title, description)
+    await new Promise((r) => setTimeout(r, 500));
+    onAdd({ title: trimmed, description: description.trim() || null });
+    setTitle("");
+    setDescription("");
+    setOpen(false);
+    setSaving(false);
+  };
+
+  return (
+    <div className="mt-3">
+      <AnimatePresence mode="wait">
+        {!open ? (
+          <motion.button
+            key="trigger"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setOpen(true)}
+            className="w-full py-3 rounded-xl border border-dashed border-zinc-800 text-zinc-600 text-[11px] font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:border-amber-400/40 hover:text-amber-400 transition-all cursor-pointer"
+          >
+            <Plus className="w-3.5 h-3.5" /> Add Achievement
+          </motion.button>
+        ) : (
+          <motion.div
+            key="form"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 space-y-3"
+          >
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-[10px] font-black uppercase tracking-widest text-amber-400/70">
+                New Achievement
+              </p>
+              <button
+                onClick={() => {
+                  setOpen(false);
+                  setTitle("");
+                  setDescription("");
+                }}
+                className="text-zinc-600 hover:text-zinc-400 transition-colors cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <input
+              type="text"
+              placeholder="Achievement title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              maxLength={100}
+              className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-sm text-white placeholder-zinc-700 focus:outline-none focus:border-amber-500/40 transition-colors font-medium"
+            />
+
+            <textarea
+              placeholder="Description (optional)"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              maxLength={300}
+              rows={2}
+              className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-sm text-white placeholder-zinc-700 focus:outline-none focus:border-amber-500/40 transition-colors resize-none font-medium"
+            />
+
+            <button
+              disabled={!title.trim() || saving}
+              onClick={handleSubmit}
+              className="w-full py-2.5 rounded-lg bg-amber-400 text-black text-[11px] font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-amber-300 transition-all disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer active:scale-95"
+            >
+              {saving ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Check className="w-3.5 h-3.5" />
+              )}
+              {saving ? "Saving..." : "Save"}
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ── Stat Pill ────────────────────────────────────────────────────────────────
+
+function StatPill({
+  icon: Icon,
+  label,
+  value,
+  valueColor,
+}: {
+  icon: React.ElementType;
+  label: string;
+  value: string;
+  valueColor: string;
+}) {
+  const iconTheme =
+    STAT_ICON_THEME[label] ?? "text-zinc-400 bg-zinc-800 border-zinc-700";
+
+  return (
+    <div className="flex items-center gap-3 p-4 bg-zinc-900/30 border border-zinc-800/60 rounded-xl hover:border-zinc-700/60 transition-all duration-200">
+      <div
+        className={`w-9 h-9 rounded-xl border flex items-center justify-center shrink-0 ${iconTheme}`}
+      >
+        <Icon className="w-4 h-4" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-[9px] font-black uppercase tracking-widest text-zinc-600">
+          {label}
+        </p>
+        <p className={`text-sm font-black mt-0.5 ${valueColor}`}>{value}</p>
+      </div>
+      <ChevronRight className="w-4 h-4 text-zinc-800 shrink-0" />
+    </div>
+  );
+}
+
+// ─── MAIN COMPONENT ──────────────────────────────────────────────────────────
 
 export default function AthleteProfileDashboard({
   usertoken,
@@ -123,18 +475,14 @@ export default function AthleteProfileDashboard({
   usertoken: string;
 }) {
   const [copied, setCopied] = useState(false);
+  const [profile, setProfile] = useState<ProfileData | null>(null);
+  const [localAchievements, setLocalAchievements] = useState<Achievement[]>([]);
 
-  // 🔥 Local state for the nested data structure
-  const [athleteData, setAthleteData] = useState<any>(null);
-  const [profileImg, setProfileImg] = useState<string | null>(null);
-
-  // Initialize Action State
   const [state, dispatcher, isPending] = useActionState<ActionResponse, string>(
     getAthleteDataAction,
     initialState,
   );
 
-  // 1. Fetch data on mount using the usertoken prop
   useEffect(() => {
     if (usertoken) {
       startTransition(() => {
@@ -143,282 +491,330 @@ export default function AthleteProfileDashboard({
     }
   }, [usertoken, dispatcher]);
 
-  // 2. Sync successful action response to local useState
-  // According to provided structure: state.data.athleteData and state.data.profileImage
   useEffect(() => {
     if (state.success && state.data) {
-      setAthleteData(state.data.athleteData);
-      setProfileImg(state.data.profileImage);
+      setProfile(state.data);
+      setLocalAchievements(state.data.athleteData.achievements ?? []);
     }
   }, [state]);
 
   const handleShare = () => {
-    const textArea = document.createElement("textarea");
-    textArea.value = window.location.href;
-    document.body.appendChild(textArea);
-    textArea.select();
     try {
+      navigator.clipboard.writeText(window.location.href);
+    } catch {
+      const el = document.createElement("textarea");
+      el.value = window.location.href;
+      document.body.appendChild(el);
+      el.select();
       document.execCommand("copy");
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
-      console.error("Copy failed", err);
+      document.body.removeChild(el);
     }
-    document.body.removeChild(textArea);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
-  // Determine loading state
-  const isLoading = isPending && !athleteData;
+  const handleAddAchievement = (a: Achievement) => {
+    setLocalAchievements((prev) => [...prev, a]);
+  };
 
-  if (isLoading) {
+  // ── Loading ──
+  if (isPending && !profile) {
     return (
       <div className="min-h-screen bg-black flex flex-col justify-center items-center gap-4">
-        <Loader2 className="w-8 h-8 text-blue-400 animate-spin" />
-        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500 animate-pulse">
-          Retrieving Performance Data
+        <Loader2 className="w-8 h-8 text-zinc-600 animate-spin" />
+        <p className="text-[10px] font-black uppercase tracking-[0.25em] text-zinc-700 animate-pulse">
+          Loading Profile
         </p>
       </div>
     );
   }
 
-  // Fallback if no data is found after initial fetch attempt
-  if (!athleteData && !isPending) {
+  // ── Not found ──
+  if (!profile && !isPending) {
     return (
-      <div className="min-h-screen bg-black flex flex-col justify-center items-center p-6 text-center">
-        <AlertCircle className="w-12 h-12 text-zinc-900 mb-4" />
-        <h2 className="text-white font-bold text-xl">Profile Not Found</h2>
-        <p className="text-zinc-500 text-sm mt-2 max-w-xs text-center leading-relaxed">
-          We couldn't locate an athlete profile associated with this session.
+      <div className="min-h-screen bg-black flex flex-col justify-center items-center p-6 text-center gap-4">
+        <AlertCircle className="w-10 h-10 text-zinc-800" />
+        <h2 className="text-white font-black text-lg tracking-tight">
+          Profile Not Found
+        </h2>
+        <p className="text-zinc-600 text-sm max-w-xs leading-relaxed">
+          We couldn't locate an athlete profile for this session.
         </p>
       </div>
     );
   }
 
-  const disciplines = (athleteData?.discipline as Discipline[]) || [];
+  if (!profile) return null;
+
+  const { athleteData, profileImage, userToken: profileToken } = profile;
+  const disciplines = athleteData.disciplines;
+
+  // Owner: logged-in usertoken === this profile's userToken
+  const isOwner = usertoken === profileToken;
+
+  // Group race results by discipline
+  const resultsByDiscipline = disciplines.reduce<
+    Record<Discipline, RaceResult[]>
+  >(
+    (acc, d) => {
+      acc[d] = (athleteData.raceResults ?? []).filter(
+        (r) => r.discipline === d,
+      );
+      return acc;
+    },
+    {} as Record<Discipline, RaceResult[]>,
+  );
+
+  const hasRaceResults = (athleteData.raceResults ?? []).length > 0;
+  const expMeta = EXPERIENCE_META[athleteData.experienceLevel];
+  const compMeta = athleteData.competitionLevel
+    ? COMPETITION_META[athleteData.competitionLevel]
+    : null;
+
+  const primaryTheme = disciplines[0]
+    ? DISCIPLINE_THEMES[disciplines[0]]
+    : null;
 
   return (
-    <div className="min-h-screen bg-black text-zinc-400 font-sans p-6 md:p-10 selection:bg-blue-400/30">
-      <motion.div
-        variants={containerVariants}
-        initial="hidden"
-        animate="visible"
-        className="max-w-5xl mx-auto space-y-12"
-      >
-        {/* ─── HEADER SECTION ─── */}
-        <div className="flex flex-col md:flex-row justify-between items-center gap-6 pb-8 border-b border-zinc-900">
-          <div className="flex flex-col md:flex-row items-center gap-6">
-            <div className="relative group">
-              <img
-                src={
-                  profileImg ||
-                  `https://avatar.vercel.sh/${athleteData?.displayName}`
-                }
-                className="w-24 h-24 rounded-3xl border border-zinc-800 object-cover grayscale-[0.2] transition-all group-hover:grayscale-0"
-                alt="Profile"
-              />
-              <div className="absolute -bottom-1 -right-1 bg-blue-500 text-white p-1 rounded-lg border-2 border-black shadow-lg">
-                <Check className="w-3 h-3 stroke-[4px]" />
-              </div>
-            </div>
+    <div className="min-h-screen bg-black text-zinc-400 font-sans selection:bg-blue-500/30 relative overflow-x-hidden">
+      {/* Discipline-tinted ambient glow */}
+      {primaryTheme && (
+        <div
+          className="fixed top-[-30%] left-[-10%] w-[70%] h-[60%] rounded-full blur-[280px] pointer-events-none opacity-[0.12]"
+          style={{ background: primaryTheme.colorHex }}
+        />
+      )}
+      <div className="fixed bottom-[-15%] right-[-5%] w-[40%] h-[40%] bg-violet-600/[0.07] rounded-full blur-[200px] pointer-events-none" />
 
-            <div className="text-center md:text-left">
-              <h1 className="text-3xl font-semibold text-white tracking-tight mb-1 uppercase italic">
-                {athleteData?.displayName}
-              </h1>
-              <div className="flex items-center justify-center md:justify-start gap-3 text-[11px] font-medium uppercase tracking-wider text-zinc-500">
-                <div className="flex items-center gap-1.5">
-                  <MapPin className="w-3.5 h-3.5 text-blue-400" />{" "}
-                  {athleteData?.locationCity || "Location Pending"}
-                </div>
-                <span className="w-1 h-1 rounded-full bg-zinc-800" />
-                <div className="flex items-center gap-1.5 text-blue-300">
-                  <Activity className="w-3.5 h-3.5" /> Verified Profile
-                </div>
-              </div>
-              <div className="flex flex-wrap justify-center md:justify-start gap-2 mt-4">
-                {disciplines.map((d) => {
-                  const theme = DISCIPLINE_THEMES[d];
-                  return theme ? (
-                    <span
-                      key={d}
-                      className={`px-3 py-1 rounded-lg border text-[9px] font-bold uppercase tracking-widest ${theme.bg} ${theme.color} ${theme.border} flex items-center gap-1.5 shadow-sm transition-colors hover:bg-zinc-800`}
-                    >
-                      {d}
-                    </span>
-                  ) : null;
-                })}
-              </div>
-            </div>
-          </div>
-
-          <button
-            onClick={handleShare}
-            className={`px-6 py-3 rounded-xl text-xs font-bold transition-all border flex items-center gap-2 shadow-sm active:scale-95 ${
-              copied
-                ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
-                : "bg-white text-black border-white hover:bg-zinc-200"
-            }`}
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-10 relative z-10">
+        <motion.div
+          variants={container}
+          initial="hidden"
+          animate="visible"
+          className="space-y-8"
+        >
+          {/* ── PROFILE HEADER ─────────────────────────────────────────── */}
+          <motion.div
+            variants={item}
+            className="relative bg-[#0a0a0a] border border-zinc-800 rounded-3xl overflow-hidden"
           >
-            {copied ? (
-              <Check className="w-4 h-4" />
-            ) : (
-              <Share2 className="w-4 h-4" />
+            {primaryTheme && (
+              <div
+                className={`absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r ${primaryTheme.accent}`}
+              />
             )}
-            {copied ? "Link Copied" : "Share Profile"}
-          </button>
-        </div>
 
-        {/* ─── DATA GRID ─── */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          {/* ─── PERFORMANCE COLUMN ─── */}
-          <div className="lg:col-span-8 space-y-8">
-            <section className="space-y-4">
-              <h3 className="text-[10px] font-bold text-zinc-600 uppercase tracking-[0.25em] px-1">
-                Performance Benchmarks
-              </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <StatCard
-                  label="Swim 100m"
-                  value={
-                    athleteData?.swimTime100m
-                      ? `${athleteData.swimTime100m}s`
-                      : "—"
-                  }
-                  icon={Waves}
-                  colorClass="text-cyan-400"
-                  subtitle="Pace"
-                />
-                <StatCard
-                  label="Cycle 10km"
-                  value={
-                    athleteData?.cycleTime10km
-                      ? `${athleteData.cycleTime10km}:00`
-                      : "—"
-                  }
-                  icon={Bike}
-                  colorClass="text-blue-400"
-                  subtitle="Time"
-                />
-                <StatCard
-                  label="Run 5km"
-                  value={
-                    athleteData?.runTime5km ? `${athleteData.runTime5km}m` : "—"
-                  }
-                  icon={Footprints}
-                  colorClass="text-indigo-400"
-                  subtitle="Endurance"
-                />
-              </div>
-            </section>
-
-            <section className="space-y-4">
-              <h3 className="text-[10px] font-bold text-zinc-600 uppercase tracking-[0.25em] px-1">
-                Activity Status
-              </h3>
-              <div className="p-8 bg-zinc-900/10 border border-zinc-800/40 rounded-[2.5rem] flex flex-col sm:flex-row items-center gap-8 shadow-sm">
-                <div className="w-20 h-20 rounded-full border-4 border-zinc-900 border-t-blue-500 flex items-center justify-center bg-zinc-950 shadow-inner">
-                  <div className="text-center">
-                    <p className="text-lg font-bold text-white leading-none">
-                      {athleteData?.trainingDaysPerWeek}
-                    </p>
-                    <p className="text-[8px] text-zinc-500 uppercase font-black">
-                      Days
-                    </p>
+            <div className="p-7">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6">
+                {/* Avatar */}
+                <div className="relative shrink-0">
+                  <img
+                    src={
+                      profileImage ||
+                      `https://avatar.vercel.sh/${athleteData.displayName ?? "athlete"}`
+                    }
+                    alt={athleteData.displayName ?? "Athlete"}
+                    className="w-20 h-20 rounded-2xl border border-zinc-800 object-cover"
+                    style={
+                      primaryTheme
+                        ? { boxShadow: `0 0 28px ${primaryTheme.colorHex}33` }
+                        : {}
+                    }
+                  />
+                  <div className="absolute -bottom-1.5 -right-1.5 w-6 h-6 bg-emerald-400 rounded-lg border-2 border-black flex items-center justify-center shadow-[0_0_10px_rgba(52,211,153,0.6)]">
+                    <Check className="w-3 h-3 text-black stroke-[3px]" />
                   </div>
                 </div>
-                <div className="flex-1 space-y-2 text-center sm:text-left">
-                  <h4 className="text-white font-bold text-lg uppercase tracking-tight italic">
-                    Training Consistency
-                  </h4>
-                  <p className="text-xs text-zinc-500 max-w-md leading-relaxed">
-                    Based on your commitment of{" "}
-                    {athleteData?.trainingDaysPerWeek} days a week, your
-                    frequency is aligned with{" "}
-                    {athleteData?.competitionLevel?.toLowerCase()} standards.
-                  </p>
-                </div>
-                <div className="px-4 py-2 bg-blue-500/5 border border-blue-500/10 rounded-2xl flex items-center gap-2">
-                  <Activity className="w-4 h-4 text-blue-400" />
-                  <span className="text-[10px] font-bold text-blue-400 uppercase tracking-widest">
-                    Active
-                  </span>
-                </div>
-              </div>
-            </section>
-          </div>
 
-          {/* ─── SIDEBAR COLUMN ─── */}
-          <div className="lg:col-span-4 space-y-8">
-            <section className="space-y-4">
-              <h3 className="text-[11px] font-bold text-zinc-600 uppercase tracking-[0.25em] px-1">
-                Athlete Profile
-              </h3>
-              <div className="grid grid-cols-1 gap-4">
-                <StatCard
-                  label="Competition"
-                  value={athleteData?.competitionLevel || "—"}
-                  icon={Award}
-                  colorClass="text-blue-400"
-                />
-                <StatCard
-                  label="Experience"
-                  value={athleteData?.experienceLevel || "—"}
-                  icon={Gauge}
-                  colorClass="text-zinc-400"
-                />
-              </div>
-            </section>
+                {/* Name + meta */}
+                <div className="flex-1 min-w-0">
+                  <h1 className="text-2xl font-black text-white tracking-tight leading-none truncate">
+                    {athleteData.displayName ?? profile.name ?? "Athlete"}
+                  </h1>
 
-            <motion.div
-              variants={cardVariants}
-              className="p-6 bg-zinc-950 border border-zinc-800 rounded-3xl space-y-6 shadow-sm"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-zinc-900 flex items-center justify-center">
-                  <Clock className="w-4 h-4 text-zinc-500" />
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 mt-2.5">
+                    {athleteData.locationCity && (
+                      <div className="flex items-center gap-1.5">
+                        <MapPin className="w-3 h-3 text-zinc-600" />
+                        <span className="text-[11px] font-bold text-zinc-500">
+                          {athleteData.locationCity}
+                        </span>
+                      </div>
+                    )}
+                    {profile.inTeam && (
+                      <div className="flex items-center gap-1.5">
+                        <Activity className="w-3 h-3 text-emerald-400" />
+                        <span className="text-[11px] font-bold text-emerald-500">
+                          In a team
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Discipline badges */}
+                  <div className="flex flex-wrap gap-2 mt-4">
+                    {disciplines.map((d) => {
+                      const t = DISCIPLINE_THEMES[d];
+                      const Icon = t.icon;
+                      return (
+                        <span
+                          key={d}
+                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-[10px] font-black uppercase tracking-widest ${t.color} ${t.bg} ${t.border}`}
+                          style={{ boxShadow: `0 0 10px ${t.colorHex}22` }}
+                        >
+                          <Icon className="w-3 h-3" /> {t.label}
+                        </span>
+                      );
+                    })}
+                  </div>
                 </div>
-                <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
-                  Last Updated
+
+                {/* Share */}
+                <button
+                  onClick={handleShare}
+                  className={`shrink-0 px-4 py-2.5 rounded-xl border text-[11px] font-black uppercase tracking-widest flex items-center gap-2 transition-all active:scale-95 cursor-pointer ${
+                    copied
+                      ? "bg-emerald-400/10 border-emerald-400/30 text-emerald-400"
+                      : "bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-white"
+                  }`}
+                >
+                  {copied ? (
+                    <Check className="w-3.5 h-3.5" />
+                  ) : (
+                    <Share2 className="w-3.5 h-3.5" />
+                  )}
+                  {copied ? "Copied" : "Share"}
+                </button>
+              </div>
+            </div>
+          </motion.div>
+
+          {/* ── STATS ROW ──────────────────────────────────────────────── */}
+          <motion.div variants={item}>
+            <SectionLabel>Profile Stats</SectionLabel>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <StatPill
+                icon={Gauge}
+                label="Experience"
+                value={expMeta.label}
+                valueColor={expMeta.color}
+              />
+              <StatPill
+                icon={Award}
+                label="Competition"
+                value={compMeta?.label ?? "—"}
+                valueColor={compMeta?.color ?? "text-zinc-600"}
+              />
+              <StatPill
+                icon={Clock}
+                label="Training Days / Week"
+                value={
+                  athleteData.trainingDaysPerWeek != null
+                    ? `${athleteData.trainingDaysPerWeek} days`
+                    : "—"
+                }
+                valueColor="text-lime-300"
+              />
+            </div>
+          </motion.div>
+
+          {/* ── RACE RESULTS ───────────────────────────────────────────── */}
+          <motion.div variants={item}>
+            <SectionLabel>Race Results</SectionLabel>
+            {hasRaceResults ? (
+              <div className="space-y-4">
+                {disciplines.map((d) => {
+                  const results = resultsByDiscipline[d];
+                  if (!results || results.length === 0) return null;
+                  return (
+                    <DisciplineRaceGroup
+                      key={d}
+                      discipline={d}
+                      results={results}
+                    />
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-14 bg-zinc-950/40 border border-zinc-800/50 rounded-2xl gap-3">
+                <Timer className="w-8 h-8 text-zinc-800" />
+                <p className="text-[11px] font-bold text-zinc-700 uppercase tracking-widest">
+                  No race results yet
                 </p>
               </div>
-              <p className="text-xs text-zinc-400 leading-relaxed font-medium">
-                Performance benchmarks are verified bests recorded during
-                training sessions.
-              </p>
-            </motion.div>
-          </div>
-        </div>
+            )}
+          </motion.div>
 
-        {/* ─── SUMMARY FOOTER ─── */}
-        <motion.div
-          variants={cardVariants}
-          className="p-10 bg-zinc-900/10 border border-zinc-800/40 rounded-[2.5rem] flex flex-col items-center text-center gap-6 relative overflow-hidden shadow-sm"
-        >
-          <div className="absolute top-0 left-0 w-full h-1 bg-linear-to-r from-transparent via-blue-500/20 to-transparent" />
-          <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center shadow-inner border border-blue-500/20 text-blue-400">
-            <Trophy className="w-6 h-6" />
-          </div>
-          <div className="max-w-lg space-y-2">
-            <h4 className="text-sm font-semibold text-white uppercase tracking-widest">
-              Athlete Summary
-            </h4>
-            <p className="text-xs text-zinc-500 leading-relaxed italic">
-              "{athleteData?.displayName || "The athlete"} is a{" "}
-              {athleteData?.experienceLevel?.toLowerCase() || "dedicated"}{" "}
-              competitor based in {athleteData?.locationCity || "the region"}.
-              Operating at a{" "}
-              {athleteData?.competitionLevel?.toLowerCase() || "high"} level,
-              they maintain a consistent training frequency of{" "}
-              {athleteData?.trainingDaysPerWeek || "several"} days per week,
-              specializing in{" "}
-              {disciplines.length > 0
-                ? disciplines.map((d) => d.toLowerCase()).join(" and ")
-                : "multisport events"}
-              ."
-            </p>
-          </div>
+          {/* ── ACHIEVEMENTS ───────────────────────────────────────────── */}
+          <motion.div variants={item}>
+            <SectionLabel>Achievements</SectionLabel>
+            <div className="bg-[#0a0a0a] border border-zinc-800 rounded-2xl p-5 space-y-2.5">
+              {localAchievements.length > 0 ? (
+                localAchievements.map((a, i) => (
+                  <AchievementCard
+                    key={a.id ?? `achievement-${i}`}
+                    achievement={a}
+                  />
+                ))
+              ) : (
+                <div className="flex flex-col items-center justify-center py-10 gap-3">
+                  <Medal className="w-8 h-8 text-zinc-800" />
+                  <p className="text-[11px] font-bold text-zinc-700 uppercase tracking-widest">
+                    No achievements yet
+                  </p>
+                </div>
+              )}
+
+              {isOwner && <AddAchievementForm onAdd={handleAddAchievement} />}
+            </div>
+          </motion.div>
+
+          {/* ── SUMMARY FOOTER ─────────────────────────────────────────── */}
+          <motion.div
+            variants={item}
+            className="relative p-8 bg-zinc-950/60 border border-zinc-800/50 rounded-3xl flex flex-col items-center text-center gap-5 overflow-hidden"
+          >
+            <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-amber-400/30 to-transparent" />
+            <div className="w-11 h-11 rounded-full bg-amber-400/10 border border-amber-400/25 flex items-center justify-center shadow-[0_0_16px_rgba(251,191,36,0.25)]">
+              <Trophy className="w-5 h-5 text-amber-300" />
+            </div>
+            <div className="max-w-md space-y-2">
+              <h4 className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-600">
+                Athlete Summary
+              </h4>
+              <p className="text-sm text-zinc-500 leading-relaxed">
+                <span className="text-white font-bold">
+                  {athleteData.displayName ?? "This athlete"}
+                </span>{" "}
+                is a{" "}
+                <span className={`font-bold ${expMeta.color}`}>
+                  {expMeta.label.toLowerCase()}
+                </span>{" "}
+                level competitor based in{" "}
+                <span className="text-zinc-300 font-bold">
+                  {athleteData.locationCity ?? "an undisclosed location"}
+                </span>
+                , specializing in{" "}
+                <span className="text-white font-bold">
+                  {disciplines
+                    .map((d) => DISCIPLINE_THEMES[d].label.toLowerCase())
+                    .join(" and ") || "multisport"}
+                </span>
+                {athleteData.trainingDaysPerWeek != null && (
+                  <>
+                    {" "}
+                    with a training frequency of{" "}
+                    <span className="text-lime-300 font-bold">
+                      {athleteData.trainingDaysPerWeek} days/week
+                    </span>
+                  </>
+                )}
+                .
+              </p>
+            </div>
+          </motion.div>
         </motion.div>
-      </motion.div>
+      </div>
     </div>
   );
 }

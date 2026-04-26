@@ -1,4 +1,3 @@
-// actions/inviteAction.ts
 "use server";
 
 import { getCurrentUser } from "../lib/auth";
@@ -54,56 +53,25 @@ export const inviteAction = catchErrors(
     if (!userId) return noSession();
 
     switch (payload.service) {
-      case "GET_INVITES": {
-        const data = await inviteService.getInvites(userId);
-        return { success: true, error: false, message: null, data };
-      }
+      case "GET_INVITES":
+        return await inviteService.getInvites(userId);
 
-      case "SEND_INVITE": {
-        await inviteService.sendInvite(userId, {
+      case "SEND_INVITE":
+        return await inviteService.sendInvite(userId, {
           toUserId: payload.toUserId,
           role: payload.role,
         });
-        return {
-          success: true,
-          error: false,
-          message: "Invite sent successfully.",
-          data: null,
-        };
-      }
 
-      case "ACCEPT_INVITE": {
-        const data = await inviteService.acceptInvite(userId, payload.inviteId);
-        return {
-          success: true,
-          error: false,
-          message: "Invite accepted. You joined the team.",
-          data,
-        };
-      }
+      case "ACCEPT_INVITE":
+        return await inviteService.acceptInvite(userId, payload.inviteId);
 
-      case "REJECT_INVITE": {
-        await inviteService.rejectInvite(userId, payload.inviteId);
-        return {
-          success: true,
-          error: false,
-          message: "Invite rejected.",
-          data: null,
-        };
-      }
+      case "REJECT_INVITE":
+        return await inviteService.rejectInvite(userId, payload.inviteId);
 
-      case "REVOKE_INVITE": {
-        await inviteService.revokeInvite(userId, payload.inviteId);
-        return {
-          success: true,
-          error: false,
-          message: "Invite revoked.",
-          data: null,
-        };
-      }
+      case "REVOKE_INVITE":
+        return await inviteService.revokeInvite(userId, payload.inviteId);
 
       default: {
-        // exhaustive check — TS errors here if a new payload is unhandled
         const _exhaustive: never = payload;
         return unknownService();
       }

@@ -1,12 +1,18 @@
 "use client";
-import React, { createContext, useContext, useState, ReactNode } from "react";
+import React, {
+  createContext,
+  useContext,
+  useState,
+  ReactNode,
+  useEffect,
+} from "react";
 
 import toast from "react-hot-toast";
 import { UserType } from "../type/authTypes";
 
 type StateContextType = {
-  user: UserType;
-  setUser: React.Dispatch<React.SetStateAction<UserType>>;
+  user: UserType | null;
+  setUser: React.Dispatch<React.SetStateAction<UserType | null>>;
   showLoginPopup: boolean;
   setShowLoginPopup: React.Dispatch<React.SetStateAction<boolean>>;
 };
@@ -18,10 +24,16 @@ export const StateProvider = ({
   user: initialUser,
 }: {
   children: ReactNode;
-  user: UserType;
+  user: UserType | null;
 }) => {
-  const [user, setUser] = useState<UserType>(initialUser);
-const [showLoginPopup, setShowLoginPopup] = useState(false);
+  const [user, setUser] = useState<UserType | null>(initialUser);
+  const [showLoginPopup, setShowLoginPopup] = useState(false);
+
+  useEffect(() => {
+    setUser(initialUser);
+    // console.log("from state context", initialUser);
+  }, [initialUser]);
+
   return (
     <StateContext.Provider
       value={{

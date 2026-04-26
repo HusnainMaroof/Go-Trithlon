@@ -2,16 +2,12 @@
 
 import { Discipline } from "../generated/prisma/enums";
 
-// ─── SHARED RESPONSE ─────────────────────────────────────────────────────────
-
 export type ActionResponse<T = unknown> = {
   success: boolean;
   error: boolean;
   message: string | null;
   data: T | null;
 };
-
-// ─── SNIPPETS ─────────────────────────────────────────────────────────────────
 
 export type AthleteProfileSnippet = {
   displayName: string | null;
@@ -30,8 +26,6 @@ export type TeamSnippet = {
   status: string;
 };
 
-// ─── INVITE SHAPES ────────────────────────────────────────────────────────────
-
 export type ReceivedInvite = {
   id: string;
   teamId: string;
@@ -41,7 +35,7 @@ export type ReceivedInvite = {
   status: string;
   createdAt: string;
   updatedAt: string;
-  team: TeamSnippet;
+  team: TeamSnippet | null;
   fromUser: UserSnippet;
 };
 
@@ -54,33 +48,21 @@ export type SentInvite = {
   status: string;
   createdAt: string;
   updatedAt: string;
-  team: TeamSnippet;
+  team: TeamSnippet | null;
   toUser: UserSnippet;
   fromUser: UserSnippet;
 };
 
+// ─── NEW: typed data envelope returned by getInvites ─────────────────────────
 
-
-// ─── ACTION PAYLOADS ──────────────────────────────────────────────────────────
-
-export type GetInvitesPayload = { service: "GET_INVITES" };
-export type SendInvitePayload = {
-  service: "SEND_INVITE";
-  toUserId: string;
-  role: Discipline;
+export type InvitesData = {
+  received: ReceivedInvite[];
+  sent: SentInvite[];
+  sentDeclined: SentInvite[]; // ← NEW: sent invites the recipient declined
+  accepted: ReceivedInvite[];
+  rejected: ReceivedInvite[];
 };
-export type AcceptInvitePayload = {
-  service: "ACCEPT_INVITE";
-  inviteId: string;
-};
-export type RejectInvitePayload = {
-  service: "REJECT_INVITE";
-  inviteId: string;
-};
-export type RevokeInvitePayload = {
-  service: "REVOKE_INVITE";
-  inviteId: string;
-};
+// ─── ACTION PAYLOADS ─────────────────────────────────────────────────────────
 
 export type InviteActionPayload =
   | { service: "GET_INVITES" }
@@ -88,5 +70,3 @@ export type InviteActionPayload =
   | { service: "ACCEPT_INVITE"; inviteId: string }
   | { service: "REJECT_INVITE"; inviteId: string }
   | { service: "REVOKE_INVITE"; inviteId: string };
-
-

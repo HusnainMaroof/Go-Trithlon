@@ -4,6 +4,7 @@ import React, {
   startTransition,
   useActionState,
   useEffect,
+  useRef,
   useState,
 } from "react";
 import { motion, AnimatePresence, Variants } from "framer-motion";
@@ -16,41 +17,103 @@ import {
   CheckCircle2,
   MapPin,
   User,
-  Activity,
+  Plus,
+  Trash2,
   Trophy,
-  Calendar,
   LucideIcon,
+  Search,
+  ChevronDown,
+  X,
+  Clock,
 } from "lucide-react";
+
 import {
-  CompetitionLevel,
+  AchievementInput,
+  ActionResponse,
+  CYCLIST_DISTANCES,
   Discipline,
   ExperienceLevel,
+  RaceDistance,
+  RaceResultInput,
+  RUNNER_DISTANCES,
   setProfilePayload,
-} from "../type/dashboardtype";
-import { setprofileAction } from "../actions/dashboardAction";
+  SWIMMER_DISTANCES,
+} from "../type/ProfileType";
+import { setprofileAction } from "../actions/SetProfileAction";
+
+// ─── Pakistan Cities ──────────────────────────────────────────────────────────
+
+const PAKISTAN_CITIES = [
+  "Islamabad",
+  "Karachi",
+  "Lahore",
+  "Rawalpindi",
+  "Faisalabad",
+  "Multan",
+  "Peshawar",
+  "Quetta",
+  "Sialkot",
+  "Gujranwala",
+  "Hyderabad",
+  "Abbottabad",
+  "Bahawalpur",
+  "Sargodha",
+  "Sukkur",
+  "Larkana",
+  "Sheikhupura",
+  "Rahim Yar Khan",
+  "Jhang",
+  "Gujrat",
+  "Mardan",
+  "Kasur",
+  "Dera Ghazi Khan",
+  "Nawabshah",
+  "Mingora",
+  "Mirpur",
+  "Muzaffarabad",
+  "Gilgit",
+  "Skardu",
+  "Turbat",
+  "Khuzdar",
+  "Hub",
+  "Jacobabad",
+  "Shikarpur",
+  "Okara",
+  "Sahiwal",
+  "Hafizabad",
+  "Wah Cantonment",
+  "Attock",
+  "Chakwal",
+  "Jhelum",
+  "Mandi Bahauddin",
+  "Narowal",
+  "Nankana Sahib",
+  "Toba Tek Singh",
+  "Vehari",
+  "Lodhran",
+  "Khanewal",
+  "Pakpattan",
+  "Bahawalnagar",
+];
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type RaceEntry = {
+  distance: RaceDistance;
+  discipline: Discipline;
+  mmss: string;
+};
 
 interface FormState {
   displayName: string;
   locationCity: string;
-  discipline: Discipline[];
-  swimTime100m: string;
-  cycleTime10km: string;
-  runTime5km: string;
+  disciplines: Discipline[];
+  raceEntries: RaceEntry[];
   experienceLevel: ExperienceLevel | null;
-  trainingDaysPerWeek: number | null;
-  competitionLevel: CompetitionLevel | null;
+  achievements: AchievementInput[];
 }
 
-export type ActionResponse = {
-  success: boolean;
-  error: boolean;
-  message: string | null;
-  data: unknown;
-};
-
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-const TOTAL_STEPS = 6; // Steps 1–5 are inputs; step 6 is the summary.
+const TOTAL_STEPS = 6;
 
 const initialState: ActionResponse = {
   success: false,
@@ -62,16 +125,382 @@ const initialState: ActionResponse = {
 const initialFormState: FormState = {
   displayName: "",
   locationCity: "",
-  discipline: [],
-  swimTime100m: "",
-  cycleTime10km: "",
-  runTime5km: "",
+  disciplines: [],
+  raceEntries: [],
   experienceLevel: null,
-  trainingDaysPerWeek: null,
-  competitionLevel: null,
+  achievements: [],
 };
 
-// ─── Component ────────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function mmssToSeconds(mmss: string): number {
+  const parts = mmss.split(":");
+  if (parts.length !== 2) return NaN;
+  const mm = parseInt(parts[0], 10);
+  const ss = parseInt(parts[1], 10);
+  if (isNaN(mm) || isNaN(ss) || ss >= 60) return NaN;
+  return mm * 60 + ss;
+}
+
+function formatEnum(val: string | null): string {
+  if (!val) return "";
+  return val.charAt(0) + val.slice(1).toLowerCase();
+}
+
+function distancesFor(disc: Discipline): readonly RaceDistance[] {
+  if (disc === "RUNNER") return RUNNER_DISTANCES;
+  if (disc === "SWIMMER") return SWIMMER_DISTANCES;
+  return CYCLIST_DISTANCES;
+}
+
+function getDisciplineStyle(disc: Discipline) {
+  if (disc === "SWIMMER")
+    return {
+      badge: "text-cyan-400 border-cyan-500/30 bg-cyan-500/10",
+      iconColor: "text-cyan-400",
+      border: "border-cyan-500/40",
+      pillSelected: "border-cyan-500/50 bg-zinc-900 text-white",
+      dot: "bg-cyan-400",
+    };
+  if (disc === "CYCLIST")
+    return {
+      badge: "text-amber-400 border-amber-500/30 bg-amber-500/10",
+      iconColor: "text-amber-400",
+      border: "border-amber-500/40",
+      pillSelected: "border-amber-500/50 bg-zinc-900 text-white",
+      dot: "bg-amber-400",
+    };
+  return {
+    badge: "text-emerald-400 border-emerald-500/30 bg-emerald-500/10",
+    iconColor: "text-emerald-400",
+    border: "border-emerald-500/40",
+    pillSelected: "border-emerald-500/50 bg-zinc-900 text-white",
+    dot: "bg-emerald-400",
+  };
+}
+
+function DiscIcon({
+  disc,
+  className,
+}: {
+  disc: Discipline;
+  className?: string;
+}) {
+  if (disc === "SWIMMER") return <Waves className={className} />;
+  if (disc === "CYCLIST") return <Bike className={className} />;
+  return <Footprints className={className} />;
+}
+
+// ─── City Dropdown ─────────────────────────────────────────────────────────────
+// Fully inline — expands downward inside the form flow, no z-index/overlap issues.
+
+function CityDropdown({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (city: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const filtered = PAKISTAN_CITIES.filter((c) =>
+    c.toLowerCase().includes(search.toLowerCase()),
+  );
+
+  const showCustomOption =
+    search.trim().length > 0 &&
+    !PAKISTAN_CITIES.some(
+      (c) => c.toLowerCase() === search.trim().toLowerCase(),
+    );
+
+  // Close on outside click
+  useEffect(() => {
+    function onOutside(e: MouseEvent) {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(e.target as Node)
+      ) {
+        setOpen(false);
+        setSearch("");
+      }
+    }
+    document.addEventListener("mousedown", onOutside);
+    return () => document.removeEventListener("mousedown", onOutside);
+  }, []);
+
+  // Auto-focus search when opening
+  useEffect(() => {
+    if (open) setTimeout(() => searchRef.current?.focus(), 60);
+  }, [open]);
+
+  const select = (city: string) => {
+    onChange(city);
+    setOpen(false);
+    setSearch("");
+  };
+
+  return (
+    <div ref={containerRef}>
+      {/* Trigger */}
+      <button
+        type="button"
+        onClick={() => setOpen((p) => !p)}
+        className={`w-full border px-4 py-4 text-left flex items-center justify-between transition-all outline-none ${
+          open
+            ? "bg-zinc-900 border-blue-500 border-b-zinc-800 rounded-t-xl rounded-b-none"
+            : "bg-zinc-900/50 border-zinc-800 rounded-xl hover:border-zinc-700"
+        }`}
+      >
+        <span className={value ? "text-white font-medium" : "text-zinc-500"}>
+          {value || "Select or search a city"}
+        </span>
+        <div className="flex items-center gap-2">
+          {value && (
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={(e) => {
+                e.stopPropagation();
+                onChange("");
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.stopPropagation();
+                  onChange("");
+                }
+              }}
+              className="text-zinc-600 hover:text-zinc-300 transition-colors cursor-pointer p-0.5"
+            >
+              <X className="w-3.5 h-3.5" />
+            </span>
+          )}
+          <ChevronDown
+            className={`w-4 h-4 text-zinc-500 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+          />
+        </div>
+      </button>
+
+      {/* Inline expanding panel — no absolute, no overlap */}
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.18, ease: "easeOut" }}
+            style={{ overflow: "hidden" }}
+            className="border border-t-0 border-zinc-700 rounded-b-xl bg-zinc-900"
+          >
+            {/* Search bar inside panel */}
+            <div className="p-2.5 border-b border-zinc-800">
+              <div className="flex items-center gap-2 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 focus-within:border-blue-500 transition-colors">
+                <Search className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                <input
+                  ref={searchRef}
+                  type="text"
+                  placeholder="Search city..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="flex-1 bg-transparent text-white placeholder:text-zinc-600 text-sm outline-none"
+                />
+                {search && (
+                  <button
+                    type="button"
+                    onClick={() => setSearch("")}
+                    className="text-zinc-600 hover:text-zinc-300 transition-colors"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* City list */}
+            <div
+              className="max-h-44 overflow-y-auto"
+              style={{ scrollbarWidth: "none" }}
+            >
+              {/* Add custom city option */}
+              {showCustomOption && (
+                <button
+                  type="button"
+                  onClick={() => select(search.trim())}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-sm text-blue-400 hover:bg-blue-500/10 transition-colors border-b border-zinc-800/60"
+                >
+                  <Plus className="w-3.5 h-3.5 shrink-0" />
+                  <span>
+                    Add &ldquo;
+                    <span className="font-bold">{search.trim()}</span>&rdquo;
+                  </span>
+                </button>
+              )}
+
+              {filtered.length === 0 && !showCustomOption && (
+                <p className="text-center text-xs text-zinc-600 py-5">
+                  No cities found
+                </p>
+              )}
+
+              {filtered.map((city) => (
+                <button
+                  key={city}
+                  type="button"
+                  onClick={() => select(city)}
+                  className={`w-full flex items-center justify-between px-4 py-2.5 text-sm transition-colors ${
+                    value === city
+                      ? "bg-zinc-800 text-white"
+                      : "text-zinc-300 hover:bg-zinc-800/50 hover:text-white"
+                  }`}
+                >
+                  <span>{city}</span>
+                  {value === city && (
+                    <CheckCircle2 className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                  )}
+                </button>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ─── Race Distance Section ────────────────────────────────────────────────────
+// Pills for distance selection, then time input rows below for each selected one.
+
+function RaceDistanceSection({
+  disc,
+  raceEntries,
+  onToggle,
+  onTimeChange,
+}: {
+  disc: Discipline;
+  raceEntries: RaceEntry[];
+  onToggle: (disc: Discipline, distance: RaceDistance) => void;
+  onTimeChange: (
+    disc: Discipline,
+    distance: RaceDistance,
+    mmss: string,
+  ) => void;
+}) {
+  const distances = distancesFor(disc);
+  const style = getDisciplineStyle(disc);
+  const selectedEntries = raceEntries.filter((r) => r.discipline === disc);
+
+  return (
+    <div className="space-y-3">
+      {/* Discipline badge */}
+      <div
+        className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-[11px] font-black uppercase tracking-widest ${style.badge}`}
+      >
+        <DiscIcon disc={disc} className="w-3.5 h-3.5" />
+        {formatEnum(disc)}
+      </div>
+
+      {/* Distance pill buttons */}
+      <div className="flex flex-wrap gap-2">
+        {distances.map((distance) => {
+          const entry = raceEntries.find(
+            (r) => r.discipline === disc && r.distance === distance,
+          );
+          const selected = !!entry;
+          const valid = selected && mmssToSeconds(entry!.mmss) > 0;
+
+          return (
+            <button
+              key={distance}
+              type="button"
+              onClick={() => onToggle(disc, distance)}
+              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-full border text-sm font-bold transition-all select-none ${
+                selected
+                  ? style.pillSelected
+                  : "border-zinc-800 bg-zinc-950 text-zinc-500 hover:border-zinc-600 hover:text-zinc-300"
+              }`}
+            >
+              {valid ? (
+                <CheckCircle2
+                  className={`w-3.5 h-3.5 shrink-0 ${style.iconColor}`}
+                />
+              ) : selected ? (
+                <Clock
+                  className={`w-3.5 h-3.5 shrink-0 ${style.iconColor} opacity-60`}
+                />
+              ) : null}
+              {distance}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Time input rows — one per selected distance */}
+      <div className="space-y-2">
+        <AnimatePresence>
+          {selectedEntries.map((entry) => {
+            const valid = mmssToSeconds(entry.mmss) > 0;
+            return (
+              <motion.div
+                key={entry.distance}
+                initial={{ opacity: 0, y: -4, height: 0 }}
+                animate={{ opacity: 1, y: 0, height: "auto" }}
+                exit={{ opacity: 0, y: -4, height: 0 }}
+                transition={{ duration: 0.18, ease: "easeOut" }}
+                style={{ overflow: "hidden" }}
+              >
+                <div
+                  className={`flex items-center gap-3 bg-zinc-900/70 border ${style.border} rounded-xl px-4 py-3`}
+                >
+                  {/* Label */}
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <DiscIcon
+                      disc={disc}
+                      className={`w-4 h-4 shrink-0 ${style.iconColor}`}
+                    />
+                    <span className="text-sm font-bold text-zinc-200 truncate">
+                      {entry.distance}
+                    </span>
+                  </div>
+
+                  {/* MM:SS input */}
+                  <div className="relative shrink-0">
+                    <input
+                      type="text"
+                      placeholder="MM:SS"
+                      value={entry.mmss}
+                      maxLength={5}
+                      onChange={(e) => {
+                        let val = e.target.value.replace(/[^0-9:]/g, "");
+                        if (val.length === 2 && !val.includes(":")) val += ":";
+                        onTimeChange(disc, entry.distance, val);
+                      }}
+                      className={`w-24 bg-black border rounded-xl px-3 py-2 text-white placeholder:text-zinc-700 outline-none text-center font-black text-base tracking-widest transition-all focus:border-blue-500 ${
+                        valid ? "border-zinc-600" : "border-zinc-800"
+                      }`}
+                    />
+                    {valid && (
+                      <motion.div
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        className="absolute -right-1.5 -top-1.5 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center"
+                      >
+                        <CheckCircle2 className="w-2.5 h-2.5 text-white" />
+                      </motion.div>
+                    )}
+                  </div>
+                </div>
+              </motion.div>
+            );
+          })}
+        </AnimatePresence>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function ProfileSetup() {
   const [state, dispatcher, isPending] = useActionState<
@@ -80,72 +509,137 @@ export default function ProfileSetup() {
   >(setprofileAction, initialState);
 
   const [step, setStep] = useState(1);
-  const [data, setData] = useState<FormState>(initialFormState);
+  const [form, setForm] = useState<FormState>(initialFormState);
+  const [achTitle, setAchTitle] = useState("");
+  const [achDesc, setAchDesc] = useState("");
 
-  // Drive UI off action response (redirect on success, surface error on failure)
   useEffect(() => {
-    if (state.success) {
-      window.location.reload();
-      console.info("Profile saved — redirect here");
+    if (state.success && state.message === "Profile created successfully") {
+      window.location.href = "/dashboard/home";
     }
-    if (state.error) {
-      // TODO: replace with a toast / inline error component
-      console.log("Profile save failed:", state.message);
-    }
+    if (state.error) console.error("Profile save failed:", state.message);
   }, [state]);
 
-  const updateData = (fields: Partial<FormState>) =>
-    setData((prev) => ({ ...prev, ...fields }));
+  const update = (fields: Partial<FormState>) =>
+    setForm((prev) => ({ ...prev, ...fields }));
 
   const toggleDiscipline = (disc: Discipline) => {
-    setData((prev) => {
-      const alreadySelected = prev.discipline.includes(disc);
-      const newDiscipline = alreadySelected
-        ? prev.discipline.filter((d) => d !== disc)
-        : [...prev.discipline, disc];
+    setForm((prev) => {
+      const has = prev.disciplines.includes(disc);
+      const disciplines = has
+        ? prev.disciplines.filter((d) => d !== disc)
+        : [...prev.disciplines, disc];
+      const raceEntries = has
+        ? prev.raceEntries.filter((r) => r.discipline !== disc)
+        : prev.raceEntries;
+      return { ...prev, disciplines, raceEntries };
+    });
+  };
 
+  const toggleRaceDistance = (disc: Discipline, distance: RaceDistance) => {
+    setForm((prev) => {
+      const exists = prev.raceEntries.some(
+        (r) => r.discipline === disc && r.distance === distance,
+      );
+      if (exists) {
+        return {
+          ...prev,
+          raceEntries: prev.raceEntries.filter(
+            (r) => !(r.discipline === disc && r.distance === distance),
+          ),
+        };
+      }
       return {
         ...prev,
-        discipline: newDiscipline,
-        ...(alreadySelected && disc === "SWIMMER" ? { swimTime100m: "" } : {}), // was Discipline.SWIMME (typo)
-        ...(alreadySelected && disc === "CYCLIST" ? { cycleTime10km: "" } : {}),
-        ...(alreadySelected && disc === "RUNNER" ? { runTime5km: "" } : {}),
+        raceEntries: [
+          ...prev.raceEntries,
+          { discipline: disc, distance, mmss: "" },
+        ],
       };
     });
   };
 
-  const handleNext = () => {
-    if (step < TOTAL_STEPS) setStep((prev) => prev + 1);
+  const updateRaceTime = (
+    disc: Discipline,
+    distance: RaceDistance,
+    mmss: string,
+  ) => {
+    setForm((prev) => ({
+      ...prev,
+      raceEntries: prev.raceEntries.map((r) =>
+        r.discipline === disc && r.distance === distance ? { ...r, mmss } : r,
+      ),
+    }));
   };
 
+  const addAchievement = () => {
+    const title = achTitle.trim();
+    if (!title) return;
+    update({
+      achievements: [
+        ...form.achievements,
+        { title, description: achDesc.trim() || undefined },
+      ],
+    });
+    setAchTitle("");
+    setAchDesc("");
+  };
+
+  const removeAchievement = (idx: number) => {
+    update({ achievements: form.achievements.filter((_, i) => i !== idx) });
+  };
+
+  const handleNext = () => {
+    if (step < TOTAL_STEPS) setStep((p) => p + 1);
+  };
   const handleBack = () => {
-    if (step > 1) setStep((prev) => prev - 1);
+    if (step > 1) setStep((p) => p - 1);
   };
 
   const isStepValid = (): boolean => {
     switch (step) {
       case 1:
         return (
-          data.displayName.trim() !== "" && data.locationCity.trim() !== ""
+          form.displayName.trim() !== "" && form.locationCity.trim() !== ""
         );
       case 2:
-        return data.discipline.length > 0;
+        return form.disciplines.length > 0;
       case 3:
-        return data.discipline.every((d) => {
-          if (d === "SWIMMER") return data.swimTime100m.trim() !== "";
-          if (d === "CYCLIST") return data.cycleTime10km.trim() !== "";
-          if (d === "RUNNER") return data.runTime5km.trim() !== "";
-          return false;
+        return form.disciplines.every((disc) => {
+          const entries = form.raceEntries.filter((r) => r.discipline === disc);
+          if (entries.length === 0) return false;
+          return entries.every(
+            (r) => !isNaN(mmssToSeconds(r.mmss)) && mmssToSeconds(r.mmss) > 0,
+          );
         });
       case 4:
-        return data.experienceLevel !== null;
-      case 5:
-        return (
-          data.trainingDaysPerWeek !== null && data.competitionLevel !== null
-        );
+        return form.experienceLevel !== null;
       default:
         return true;
     }
+  };
+
+  const onComplete = () => {
+    if (!form.experienceLevel) return;
+    const raceResults: RaceResultInput[] = form.raceEntries
+      .map((r) => ({
+        discipline: r.discipline,
+        distance: r.distance,
+        timeSeconds: mmssToSeconds(r.mmss),
+      }))
+      .filter((r) => !isNaN(r.timeSeconds) && r.timeSeconds > 0);
+
+    const payload: setProfilePayload = {
+      displayName: form.displayName,
+      locationCity: form.locationCity,
+      disciplines: form.disciplines,
+      experienceLevel: form.experienceLevel,
+      raceResults,
+      achievements: form.achievements,
+      trainingDaysPerWeek: null,
+      competitionLevel: null,
+    };
+    startTransition(() => dispatcher(payload));
   };
 
   const stepVariants: Variants = {
@@ -164,55 +658,12 @@ export default function ProfileSetup() {
     },
   };
 
-  /**
-   * Builds the strictly-typed payload and dispatches the server action.
-   * Guards ensure experienceLevel and competitionLevel are non-null here,
-   * matching isStepValid() enforcement on step 4 and 5.
-   */
-  const onComplete = () => {
-    if (!data.experienceLevel || !data.competitionLevel) return;
-
-    const finalPayload: setProfilePayload = {
-      displayName: data.displayName,
-      locationCity: data.locationCity,
-      disciplines: data.discipline,
-      swimTime100m: data.swimTime100m ? parseFloat(data.swimTime100m) : null,
-      cycleTime10km: data.cycleTime10km ? parseFloat(data.cycleTime10km) : null,
-      runTime5km: data.runTime5km ? parseFloat(data.runTime5km) : null,
-      experienceLevel: data.experienceLevel,
-      trainingDaysPerWeek: data.trainingDaysPerWeek,
-      competitionLevel: data.competitionLevel,
-    };
-
-    startTransition(() => {
-      dispatcher(finalPayload);
-    });
-  };
-
-  /** "SWIMMER" → "Swimmer" */
-  const formatEnum = (val: string | null): string => {
-    if (!val) return "";
-    return val.charAt(0) + val.slice(1).toLowerCase();
-  };
-
-  
-useEffect(() => {
-  if (state.success && state.message === "Profile created successfully") {
-    window.location.href = "/dashboard/home";
-  }
-  if (state.error) {
-    console.error("Profile save failed:", state.message);
-  }
-}, [state]);
-
   return (
     <div className="min-h-screen w-full bg-black flex items-center justify-center p-4 sm:p-6 selection:bg-blue-500/30 font-sans">
-      {/* Background Gradients */}
       <div className="fixed top-[-10%] left-[-10%] w-[50%] h-[50%] bg-blue-600/10 rounded-full blur-[150px] pointer-events-none" />
       <div className="fixed bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-cyan-500/5 rounded-full blur-[150px] pointer-events-none" />
 
-      {/* Main Container */}
-      <div className="relative w-full max-w-xl bg-zinc-950 border border-zinc-800/80 rounded-4xl p-6 sm:p-10 shadow-2xl overflow-hidden flex flex-col min-h-140 sm:min-h-155">
+      <div className="relative w-full max-w-xl bg-zinc-950 border border-zinc-800/80 rounded-4xl p-6 sm:p-10 shadow-2xl overflow-visible flex flex-col min-h-140 sm:min-h-155">
         {/* Progress Bar */}
         {step < TOTAL_STEPS && (
           <div className="mb-8 relative z-10">
@@ -226,7 +677,7 @@ useEffect(() => {
             </div>
             <div className="h-1.5 w-full bg-zinc-900 rounded-full overflow-hidden">
               <motion.div
-                className="h-full bg-linear-to-r from-blue-500 to-cyan-400"
+                className="h-full bg-gradient-to-r from-blue-500 to-cyan-400"
                 initial={{ width: 0 }}
                 animate={{ width: `${(step / 5) * 100}%` }}
                 transition={{ type: "spring", stiffness: 100, damping: 20 }}
@@ -235,7 +686,7 @@ useEffect(() => {
           </div>
         )}
 
-        {/* Content Area */}
+        {/* Content */}
         <div className="grow relative z-10 flex flex-col justify-center">
           <AnimatePresence mode="wait">
             <motion.div
@@ -246,7 +697,7 @@ useEffect(() => {
               exit="exit"
               className="w-full flex flex-col"
             >
-              {/* ── Step 1: Basic Information ────────────────────────────── */}
+              {/* ── Step 1 ── */}
               {step === 1 && (
                 <div className="space-y-6">
                   <div>
@@ -254,7 +705,7 @@ useEffect(() => {
                       Profile Setup
                     </h2>
                     <p className="text-zinc-400 text-sm">
-                      Let's set up your identity on TriMatch.
+                      Let&apos;s set up your identity on TriMatch.
                     </p>
                   </div>
 
@@ -266,11 +717,11 @@ useEffect(() => {
                       <input
                         type="text"
                         placeholder="e.g. Alex River"
-                        value={data.displayName}
+                        value={form.displayName}
                         onChange={(e) =>
-                          updateData({ displayName: e.target.value })
+                          update({ displayName: e.target.value })
                         }
-                        className="w-full bg-zinc-900/50 border border-zinc-800 focus:border-blue-500 focus:bg-zinc-900 rounded-xl px-4 py-4 text-white placeholder:text-zinc-600 outline-none transition-all shadow-sm"
+                        className="w-full bg-zinc-900/50 border border-zinc-800 focus:border-blue-500 focus:bg-zinc-900 rounded-xl px-4 py-4 text-white placeholder:text-zinc-600 outline-none transition-all"
                       />
                     </div>
 
@@ -278,21 +729,20 @@ useEffect(() => {
                       <label className="text-[11px] font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-2">
                         <MapPin className="w-3.5 h-3.5" /> Location (City)
                       </label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Austin, TX"
-                        value={data.locationCity}
-                        onChange={(e) =>
-                          updateData({ locationCity: e.target.value })
-                        }
-                        className="w-full bg-zinc-900/50 border border-zinc-800 focus:border-blue-500 focus:bg-zinc-900 rounded-xl px-4 py-4 text-white placeholder:text-zinc-600 outline-none transition-all shadow-sm"
+                      <CityDropdown
+                        value={form.locationCity}
+                        onChange={(city) => update({ locationCity: city })}
                       />
+                      <p className="text-[10px] text-zinc-600 pl-1">
+                        Pakistan cities listed — can&apos;t find yours? Type and
+                        add it.
+                      </p>
                     </div>
                   </div>
                 </div>
               )}
 
-              {/* ── Step 2: Disciplines ───────────────────────────────────── */}
+              {/* ── Step 2 ── */}
               {step === 2 && (
                 <div className="space-y-6 flex flex-col h-full">
                   <div>
@@ -300,49 +750,46 @@ useEffect(() => {
                       Your Disciplines
                     </h2>
                     <p className="text-zinc-400 text-sm">
-                      Select the triathlon legs you want to compete in. You can
-                      pick one or more.
+                      Select the triathlon legs you want to compete in.
                     </p>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
-              
                     <SelectableCard
                       icon={Waves}
                       label="Swimmer"
                       iconColor="text-cyan-400"
-                      selected={data.discipline.includes("SWIMMER")}
+                      selected={form.disciplines.includes("SWIMMER")}
                       onClick={() => toggleDiscipline("SWIMMER")}
                     />
                     <SelectableCard
                       icon={Bike}
                       label="Cyclist"
                       iconColor="text-amber-400"
-                      selected={data.discipline.includes("CYCLIST")}
+                      selected={form.disciplines.includes("CYCLIST")}
                       onClick={() => toggleDiscipline("CYCLIST")}
                     />
                     <SelectableCard
                       icon={Footprints}
                       label="Runner"
                       iconColor="text-emerald-400"
-                      selected={data.discipline.includes("RUNNER")}
+                      selected={form.disciplines.includes("RUNNER")}
                       onClick={() => toggleDiscipline("RUNNER")}
                     />
                   </div>
 
                   <div className="pt-4 h-12 flex justify-center items-center">
-                    {data.discipline.length > 0 ? (
+                    {form.disciplines.length > 0 ? (
                       <div className="flex flex-wrap gap-2 justify-center">
                         <span className="text-xs text-zinc-500 flex items-center mr-2">
                           Selected:
                         </span>
-                        {data.discipline.map((d) => (
+                        {form.disciplines.map((d) => (
                           <motion.span
                             key={d}
                             initial={{ scale: 0, opacity: 0 }}
                             animate={{ scale: 1, opacity: 1 }}
-                            exit={{ scale: 0, opacity: 0 }}
-                            className="px-3 py-1 bg-zinc-900 border border-zinc-700 text-zinc-200 text-[10px] font-bold uppercase tracking-wider rounded-full flex items-center shadow-sm"
+                            className="px-3 py-1 bg-zinc-900 border border-zinc-700 text-zinc-200 text-[10px] font-bold uppercase tracking-wider rounded-full"
                           >
                             {formatEnum(d)}
                           </motion.span>
@@ -357,76 +804,38 @@ useEffect(() => {
                 </div>
               )}
 
-              {/* ── Step 3: Performance Metrics ──────────────────────────── */}
+              {/* ── Step 3 ── */}
               {step === 3 && (
-                <div className="space-y-6 flex flex-col h-full">
-                  <div className="text-center">
+                <div className="space-y-5 flex flex-col h-full">
+                  <div>
                     <h2 className="text-3xl font-extrabold text-white tracking-tight mb-2">
-                      Performance Metrics
+                      Race Times
                     </h2>
                     <p className="text-zinc-400 text-sm">
-                      Log your best recent times to help match with similar
-                      athletes.
+                      Tap distances to select, then enter your best time in{" "}
+                      <span className="text-white font-bold">MM:SS</span>. At
+                      least one per discipline.
                     </p>
                   </div>
 
                   <div
-                    className={`mt-6 grid gap-4 w-full max-h-90 overflow-y-auto hide-scrollbar px-1 ${
-                      data.discipline.length > 1
-                        ? "grid-cols-1 sm:grid-cols-2"
-                        : "grid-cols-1 max-w-sm mx-auto"
-                    }`}
+                    className="space-y-7 overflow-y-auto"
+                    style={{ maxHeight: "400px", scrollbarWidth: "none" }}
                   >
-                    {data.discipline.map((disc) => {
-                      const isSwimmer = disc === "SWIMMER";
-                      const isCyclist = disc === "CYCLIST";
-
-                      const val = isSwimmer
-                        ? data.swimTime100m
-                        : isCyclist
-                          ? data.cycleTime10km
-                          : data.runTime5km;
-
-                      const setVal = (newVal: string) => {
-                        if (isSwimmer) updateData({ swimTime100m: newVal });
-                        else if (isCyclist)
-                          updateData({ cycleTime10km: newVal });
-                        else updateData({ runTime5km: newVal });
-                      };
-
-                      return (
-                        <div
-                          key={disc}
-                          className="w-full bg-zinc-900/40 border border-zinc-800 rounded-2xl p-5 flex flex-col justify-center transition-all hover:bg-zinc-900/60"
-                        >
-                          <label className="text-[10px] font-bold text-blue-400 uppercase tracking-widest flex items-center justify-center gap-2 mb-4 bg-blue-500/10 px-3 py-1.5 rounded-full border border-blue-500/20 w-fit mx-auto">
-                            <Activity className="w-3.5 h-3.5" />
-                            {isSwimmer && "100m Pace (Seconds)"}
-                            {isCyclist && "10km Pace (Mins)"}
-                            {!isSwimmer && !isCyclist && "5k Pace (Mins)"}
-                          </label>
-
-                          <input
-                            type="number"
-                            step="any"
-                            
-                            min={isSwimmer ? "30" : "5"}
-                            max={isSwimmer ? "300" : "120"}
-                            placeholder={
-                              isSwimmer ? "85.5" : isCyclist ? "20.5" : "21.5"
-                            }
-                            value={val}
-                            onChange={(e) => setVal(e.target.value)}
-                            className="w-full bg-black border border-zinc-800 focus:border-blue-500 rounded-xl px-4 py-4 text-white placeholder:text-zinc-700 outline-none transition-all text-2xl sm:text-3xl font-black text-center tracking-tighter shadow-inner"
-                          />
-                        </div>
-                      );
-                    })}
+                    {form.disciplines.map((disc) => (
+                      <RaceDistanceSection
+                        key={disc}
+                        disc={disc}
+                        raceEntries={form.raceEntries}
+                        onToggle={toggleRaceDistance}
+                        onTimeChange={updateRaceTime}
+                      />
+                    ))}
                   </div>
                 </div>
               )}
 
-              {/* ── Step 4: Experience Level ──────────────────────────────── */}
+              {/* ── Step 4 ── */}
               {step === 4 && (
                 <div className="space-y-6 flex flex-col h-full">
                   <div>
@@ -451,26 +860,22 @@ useEffect(() => {
                     ).map(({ label, value }) => (
                       <button
                         key={value}
-                        onClick={() => updateData({ experienceLevel: value })}
-                        className={`w-full relative flex flex-col items-center justify-center p-6 rounded-2xl border transition-all cursor-pointer group overflow-hidden min-h-32.5 ${
-                          data.experienceLevel === value
+                        onClick={() => update({ experienceLevel: value })}
+                        className={`w-full relative flex flex-col items-center justify-center p-6 rounded-2xl border transition-all cursor-pointer group overflow-hidden min-h-32 ${
+                          form.experienceLevel === value
                             ? "bg-zinc-900 border-zinc-600 shadow-lg scale-[1.02]"
                             : "bg-zinc-950 border-zinc-800 hover:border-zinc-700 hover:bg-zinc-900/50 hover:scale-[1.01]"
                         }`}
                       >
-                        {data.experienceLevel === value && (
+                        {form.experienceLevel === value && (
                           <div className="absolute right-0 top-0 w-32 h-32 bg-white/5 rounded-full blur-2xl pointer-events-none" />
                         )}
                         <span
-                          className={`text-lg font-bold ${
-                            data.experienceLevel === value
-                              ? "text-white"
-                              : "text-zinc-400 group-hover:text-zinc-200"
-                          }`}
+                          className={`text-lg font-bold ${form.experienceLevel === value ? "text-white" : "text-zinc-400 group-hover:text-zinc-200"}`}
                         >
                           {label}
                         </span>
-                        {data.experienceLevel === value && (
+                        {form.experienceLevel === value && (
                           <motion.div
                             initial={{ scale: 0 }}
                             animate={{ scale: 1 }}
@@ -485,83 +890,99 @@ useEffect(() => {
                 </div>
               )}
 
-              {/* ── Step 5: Training & Competition ───────────────────────── */}
+              {/* ── Step 5 ── */}
               {step === 5 && (
-                <div className="space-y-6 flex flex-col h-full">
+                <div className="space-y-5 flex flex-col h-full">
                   <div>
-                    <h2 className="text-3xl font-extrabold text-white tracking-tight mb-2">
-                      Training & Competition
+                    <h2 className="text-3xl font-extrabold text-white tracking-tight mb-1">
+                      Achievements
                     </h2>
                     <p className="text-zinc-400 text-sm">
-                      Let others know your commitment level.
+                      Share your proudest moments. You can skip and add later.
                     </p>
                   </div>
 
-                  <div className="space-y-8 mt-6">
-                    <div className="space-y-4">
-                      <label className="text-[11px] font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-2">
-                        <Calendar className="w-3.5 h-3.5" /> Training Days /
-                        Week
-                      </label>
-                      <div className="grid grid-cols-7 gap-2 sm:gap-3">
-                        {([1, 2, 3, 4, 5, 6, 7] as const).map((num) => (
-                          <button
-                            key={num}
-                            onClick={() =>
-                              updateData({ trainingDaysPerWeek: num })
-                            }
-                            className={`aspect-square w-full rounded-full flex items-center justify-center font-bold text-sm sm:text-base transition-all cursor-pointer ${
-                              data.trainingDaysPerWeek === num
-                                ? "bg-zinc-100 text-black border border-white shadow-[0_0_15px_rgba(255,255,255,0.2)] scale-110"
-                                : "bg-zinc-900 border-zinc-800 text-zinc-500 hover:bg-zinc-800 hover:text-white hover:scale-105"
-                            }`}
-                          >
-                            {num}
-                          </button>
-                        ))}
-                      </div>
+                  <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-4 space-y-3">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Trophy className="w-4 h-4 text-amber-400" />
+                      <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest">
+                        Add Achievement
+                      </span>
                     </div>
+                    <input
+                      type="text"
+                      placeholder="Title — e.g. Finished my first triathlon"
+                      value={achTitle}
+                      onChange={(e) => setAchTitle(e.target.value)}
+                      className="w-full bg-black border border-zinc-800 focus:border-blue-500 rounded-xl px-4 py-3 text-white placeholder:text-zinc-600 outline-none transition-all text-sm"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Description (optional) — e.g. Ironman 70.3 Lahore 2024"
+                      value={achDesc}
+                      onChange={(e) => setAchDesc(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") addAchievement();
+                      }}
+                      className="w-full bg-black border border-zinc-800 focus:border-blue-500 rounded-xl px-4 py-3 text-white placeholder:text-zinc-600 outline-none transition-all text-sm"
+                    />
+                    <button
+                      onClick={addAchievement}
+                      disabled={!achTitle.trim()}
+                      className="w-full py-2.5 rounded-xl font-black text-[11px] uppercase tracking-widest flex items-center justify-center gap-2 bg-blue-500/10 text-blue-400 border border-blue-500/30 hover:bg-blue-500 hover:text-white hover:border-blue-400 transition-all disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Add
+                    </button>
+                  </div>
 
-                    <div className="space-y-4">
-                      <label className="text-[11px] font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-2">
-                        <Trophy className="w-3.5 h-3.5" /> Competition Level
-                      </label>
-                      <div className="grid grid-cols-2 gap-3">
-                        {(
-                          [
-                            { label: "None", value: CompetitionLevel.NONE },
-                            { label: "Local", value: CompetitionLevel.LOCAL },
-                            {
-                              label: "National",
-                              value: CompetitionLevel.NATIONAL,
-                            },
-                            {
-                              label: "Professional",
-                              value: CompetitionLevel.PROFESSIONAL,
-                            },
-                          ] as const
-                        ).map(({ label, value }) => (
-                          <button
-                            key={value}
-                            onClick={() =>
-                              updateData({ competitionLevel: value })
-                            }
-                            className={`py-3.5 px-4 rounded-xl border text-center font-bold transition-all cursor-pointer ${
-                              data.competitionLevel === value
-                                ? "bg-zinc-800 border-zinc-600 text-white shadow-md"
-                                : "bg-zinc-900 border-zinc-800 text-zinc-500 hover:bg-zinc-800/80 hover:text-zinc-300"
-                            }`}
+                  <div
+                    className="space-y-2 max-h-52 overflow-y-auto"
+                    style={{ scrollbarWidth: "none" }}
+                  >
+                    <AnimatePresence>
+                      {form.achievements.length === 0 ? (
+                        <motion.p
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          className="text-center text-xs text-zinc-600 py-6"
+                        >
+                          No achievements added yet
+                        </motion.p>
+                      ) : (
+                        form.achievements.map((ach, idx) => (
+                          <motion.div
+                            key={idx}
+                            initial={{ opacity: 0, y: 8 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, x: -20 }}
+                            className="flex items-start gap-3 bg-zinc-900/60 border border-zinc-800 rounded-xl px-4 py-3"
                           >
-                            {label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
+                            <Trophy className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-bold text-white truncate">
+                                {ach.title}
+                              </p>
+                              {ach.description && (
+                                <p className="text-xs text-zinc-500 mt-0.5 truncate">
+                                  {ach.description}
+                                </p>
+                              )}
+                            </div>
+                            <button
+                              onClick={() => removeAchievement(idx)}
+                              className="text-zinc-600 hover:text-red-400 transition-colors cursor-pointer shrink-0 mt-0.5"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </motion.div>
+                        ))
+                      )}
+                    </AnimatePresence>
                   </div>
                 </div>
               )}
 
-              {/* ── Step 6: Summary ──────────────────────────────────────── */}
+              {/* ── Step 6: Summary ── */}
               {step === 6 && (
                 <div className="space-y-6 flex flex-col h-full justify-center">
                   <div className="text-center mb-4">
@@ -569,7 +990,7 @@ useEffect(() => {
                       initial={{ scale: 0, rotate: -180 }}
                       animate={{ scale: 1, rotate: 0 }}
                       transition={{ type: "spring", damping: 15 }}
-                      className="w-16 h-16 bg-blue-500/10 border border-blue-500/20 rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg shadow-blue-500/10"
+                      className="w-16 h-16 bg-blue-500/10 border border-blue-500/20 rounded-full flex items-center justify-center mx-auto mb-4"
                     >
                       <CheckCircle2 className="w-8 h-8 text-blue-400" />
                     </motion.div>
@@ -577,11 +998,10 @@ useEffect(() => {
                       Profile Complete
                     </h2>
                     <p className="text-zinc-400 text-sm">
-                      Review your profile details before finishing.
+                      Review your details before finishing.
                     </p>
                   </div>
 
-                  {/* Error banner */}
                   {state.error && (
                     <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 text-sm text-red-400 text-center">
                       {state.message ??
@@ -589,49 +1009,71 @@ useEffect(() => {
                     </div>
                   )}
 
-                  <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-5 sm:p-6 space-y-1 max-h-75 overflow-y-auto hide-scrollbar">
-                    <SummaryRow label="Display Name" value={data.displayName} />
-                    <SummaryRow label="Location" value={data.locationCity} />
+                  <div
+                    className="bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-5 sm:p-6 space-y-1 max-h-80 overflow-y-auto"
+                    style={{ scrollbarWidth: "none" }}
+                  >
+                    <SummaryRow label="Display Name" value={form.displayName} />
+                    <SummaryRow label="Location" value={form.locationCity} />
                     <SummaryRow
-                      label="Experience Level"
-                      value={formatEnum(data.experienceLevel)}
+                      label="Experience"
+                      value={formatEnum(form.experienceLevel)}
                     />
                     <SummaryRow
-                      label="Training & Comp"
-                      value={`${data.trainingDaysPerWeek}d/wk • ${formatEnum(data.competitionLevel)}`}
+                      label="Disciplines"
+                      value={form.disciplines.map(formatEnum).join(", ")}
                     />
 
-                    <div className="pt-4 pb-2 mt-2 border-t border-zinc-800/50">
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-blue-400 mb-3 block">
-                        Disciplines & Performance
-                      </span>
-                      <div className="space-y-2">
-                        {data.discipline.map((d) => {
-                          const isSwimmer = d === "SWIMMER";
-                          const isCyclist = d === "CYCLIST";
-                          const val = isSwimmer
-                            ? data.swimTime100m
-                            : isCyclist
-                              ? data.cycleTime10km
-                              : data.runTime5km;
-                          const unit = isSwimmer ? "sec" : "min";
-
-                          return (
+                    {form.raceEntries.length > 0 && (
+                      <div className="pt-4 mt-2 border-t border-zinc-800/50">
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-blue-400 mb-3 block">
+                          Race Times
+                        </span>
+                        <div className="space-y-2">
+                          {form.raceEntries.map((r, i) => (
                             <div
-                              key={d}
+                              key={i}
                               className="flex justify-between items-center bg-black/50 px-3 py-2.5 rounded-lg border border-zinc-800/50"
                             >
                               <span className="text-sm text-zinc-300 font-bold">
-                                {formatEnum(d)}
+                                {formatEnum(r.discipline)} · {r.distance}
                               </span>
-                              <span className="text-sm font-bold text-white truncate max-w-[60%] text-right">
-                                {val} {unit}
+                              <span className="text-sm font-black text-white">
+                                {r.mmss}
                               </span>
                             </div>
-                          );
-                        })}
+                          ))}
+                        </div>
                       </div>
-                    </div>
+                    )}
+
+                    {form.achievements.length > 0 && (
+                      <div className="pt-4 mt-2 border-t border-zinc-800/50">
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-amber-400 mb-3 block">
+                          Achievements
+                        </span>
+                        <div className="space-y-2">
+                          {form.achievements.map((a, i) => (
+                            <div
+                              key={i}
+                              className="flex items-start gap-2 bg-black/50 px-3 py-2.5 rounded-lg border border-zinc-800/50"
+                            >
+                              <Trophy className="w-3.5 h-3.5 text-amber-400 mt-0.5 shrink-0" />
+                              <div className="min-w-0">
+                                <p className="text-sm font-bold text-white truncate">
+                                  {a.title}
+                                </p>
+                                {a.description && (
+                                  <p className="text-xs text-zinc-500 truncate">
+                                    {a.description}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -639,7 +1081,7 @@ useEffect(() => {
           </AnimatePresence>
         </div>
 
-        {/* Navigation Buttons */}
+        {/* Navigation */}
         <div className="mt-8 pt-6 border-t border-zinc-900 flex items-center justify-between relative z-10">
           {step > 1 ? (
             <button
@@ -717,20 +1159,14 @@ function SelectableCard({
         </motion.div>
       )}
       <div
-        className={`w-12 h-12 rounded-full flex items-center justify-center mb-3 transition-colors ${
-          selected ? "bg-zinc-800" : "bg-zinc-900 group-hover:bg-zinc-800"
-        }`}
+        className={`w-12 h-12 rounded-full flex items-center justify-center mb-3 transition-colors ${selected ? "bg-zinc-800" : "bg-zinc-900 group-hover:bg-zinc-800"}`}
       >
         <Icon
-          className={`w-6 h-6 ${
-            selected ? iconColor : "text-zinc-500 group-hover:text-zinc-300"
-          }`}
+          className={`w-6 h-6 ${selected ? iconColor : "text-zinc-500 group-hover:text-zinc-300"}`}
         />
       </div>
       <span
-        className={`text-base font-bold ${
-          selected ? "text-white" : "text-zinc-400 group-hover:text-zinc-200"
-        }`}
+        className={`text-base font-bold ${selected ? "text-white" : "text-zinc-400 group-hover:text-zinc-200"}`}
       >
         {label}
       </span>
@@ -738,25 +1174,13 @@ function SelectableCard({
   );
 }
 
-function SummaryRow({
-  label,
-  value,
-  highlight = false,
-}: {
-  label: string;
-  value: string;
-  highlight?: boolean;
-}) {
+function SummaryRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex justify-between items-center py-2 border-b border-zinc-800/50 last:border-0">
       <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">
         {label}
       </span>
-      <span
-        className={`text-sm font-bold text-right ${
-          highlight ? "text-blue-400" : "text-zinc-200"
-        }`}
-      >
+      <span className="text-sm font-bold text-right text-zinc-200">
         {value}
       </span>
     </div>

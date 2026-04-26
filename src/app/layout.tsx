@@ -4,6 +4,7 @@ import "./globals.css";
 import { Toaster } from "react-hot-toast";
 import { StateProvider } from "../context/useContext";
 import { getCurrentUser } from "../lib/auth";
+import { redirect } from "next/navigation";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -26,6 +27,7 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const user = await getCurrentUser();
+
   // console.log("from Layout ", user);
 
   return (
@@ -34,7 +36,9 @@ export default async function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <StateProvider user={user?.authsuccess?.data}>{children}</StateProvider>
+        <StateProvider user={user?.authsuccess?.data ?? null}>
+          {children}
+        </StateProvider>
         <Toaster
           position="top-center"
           reverseOrder={false}

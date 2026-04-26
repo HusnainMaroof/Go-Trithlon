@@ -11,11 +11,22 @@ import {
   ChevronDown,
   Settings,
   Mail,
+  Loader2,
 } from "lucide-react";
-import { useState, useRef, useEffect } from "react";
+import {
+  useState,
+  useRef,
+  useEffect,
+  startTransition,
+  useActionState,
+} from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useStateContext } from "../context/useContext";
+import { logoutAction } from "../actions/logoutAction";
+import Logout from "./Logout";
+
+// ─── Logout Hook ───────────────────────────────────────────────────────────────
 
 // ─── Profile Avatar ────────────────────────────────────────────────────────────
 const ProfileAvatar = ({
@@ -94,12 +105,10 @@ const NavBar = () => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
-  // ✅ Fix: useRouter for client-side navigation, not redirect()
   const router = useRouter();
 
   const isLoggedIn = Boolean(user?.userToken);
 
-  // ✅ Fix: "My Invites" is now part of the unified nav link system
   const navLinks = [
     { id: "dashboard", label: "Dashboard", href: "/dashboard/home" },
     { id: "athletes", label: "Athletes", href: "/dashboard/athletes" },
@@ -107,7 +116,6 @@ const NavBar = () => {
     { id: "invites", label: "My Invites", href: "/dashboard/invites" },
   ];
 
-  // Close dropdown on outside click
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (
@@ -121,11 +129,9 @@ const NavBar = () => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Close mobile menu on route change
   useEffect(() => {
     setMobileMenuOpen(false);
   }, [pathname]);
-
   const dropdownVariants: Variants = {
     hidden: { opacity: 0, y: 12, scale: 0.95, filter: "blur(8px)" },
     visible: {
@@ -150,7 +156,6 @@ const NavBar = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             {/* ── Logo ── */}
-            {/* ✅ Fix: use Link or router.push, not redirect() which is server-only */}
             <button
               onClick={() => router.push("/")}
               className="flex items-center gap-3 cursor-pointer group bg-transparent border-none outline-none"
@@ -291,11 +296,9 @@ const NavBar = () => {
 
                           <div className="h-px bg-zinc-800/60 my-1 mx-2" />
 
+                          {/* ── Desktop Sign Out ── */}
                           <div className="px-2 py-1">
-                            <button className="group flex items-center gap-3 w-full px-3 py-2.5 text-sm font-bold text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-xl transition-all cursor-pointer">
-                              <LogOut className="w-4 h-4 transition-transform duration-200 group-hover:-translate-x-1" />
-                              <span>Sign Out</span>
-                            </button>
+                            <Logout />
                           </div>
                         </motion.div>
                       )}
@@ -368,7 +371,6 @@ const NavBar = () => {
 
               {user?.isOnboard && (
                 <div className="space-y-1.5">
-                  {/* ✅ Fix: All nav links including invites share the same active-state logic */}
                   {navLinks.map((tab) => {
                     const isActive = Boolean(pathname?.startsWith(tab.href));
                     return (
@@ -402,10 +404,8 @@ const NavBar = () => {
                     Account Settings
                   </button>
 
-                  <button className="flex items-center gap-3 w-full text-left px-4 py-3.5 mt-2 rounded-xl text-base font-bold text-red-400 hover:bg-red-500/10 border border-transparent transition-colors cursor-pointer">
-                    <LogOut className="w-5 h-5 opacity-80" />
-                    Sign Out
-                  </button>
+                  {/* ── Mobile Sign Out ── */}
+                  <Logout />
                 </div>
               )}
             </div>

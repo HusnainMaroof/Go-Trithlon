@@ -31,6 +31,7 @@ import { Discipline } from "../generated/prisma/enums";
 import {
   ActionResponse,
   InviteActionPayload,
+  InvitesData,
   ReceivedInvite,
   SentInvite,
 } from "../type/inviteTypes";
@@ -49,7 +50,7 @@ type LocalInviteStatus =
 
 type StatusSetter = React.Dispatch<React.SetStateAction<LocalInviteStatus>>;
 
-type Tab = "received" | "sent";
+type Tab = "pending" | "sent" | "accepted" | "rejected";
 
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
 
@@ -96,7 +97,7 @@ const initialState: ActionResponse = {
   data: null,
 };
 
-// ─── STATUS REGISTRY ──────────────────────────────────────────────────────────
+// ─── STATUS REGISTRY ─────────────────────────────────────────────────────────
 
 const statusRegistry = new Map<string, StatusSetter>();
 
@@ -113,6 +114,26 @@ function StatusUpdaterPortal({
       statusRegistry.delete(inviteId);
     };
   }, [inviteId, setStatus]);
+  return null;
+}
+
+// ─── REVOKE REGISTRY ─────────────────────────────────────────────────────────
+
+const revokeRegistry = new Map<string, () => void>();
+
+function RevokeUpdaterPortal({
+  inviteId,
+  setRevoked,
+}: {
+  inviteId: string;
+  setRevoked: (v: boolean) => void;
+}) {
+  useEffect(() => {
+    revokeRegistry.set(inviteId, () => setRevoked(true));
+    return () => {
+      revokeRegistry.delete(inviteId);
+    };
+  }, [inviteId, setRevoked]);
   return null;
 }
 
@@ -168,33 +189,22 @@ function EmptyState({ label }: { label: string }) {
   );
 }
 
-// ─── RECEIVED CARD ────────────────────────────────────────────────────────────
+// ─── INVITE CARD SHELL ───────────────────────────────────────────────────────
 
-function ReceivedInviteCard({
+function InviteCardShell({
   invite,
-  onAccept,
-  onReject,
+  cfg,
+  userLabel,
+  userSnippet,
+  children,
 }: {
-  invite: ReceivedInvite;
-  onAccept: (id: string) => void;
-  onReject: (id: string) => void;
+  invite: ReceivedInvite | SentInvite;
+  cfg: DisciplineConfig;
+  userLabel: string;
+  userSnippet: { name: string | null; city: string | null };
+  children: React.ReactNode;
 }) {
-  const [localStatus, setLocalStatus] = useState<LocalInviteStatus>({
-    phase: "idle",
-  });
-
-  const cfg = DISCIPLINE_CONFIG[invite.role];
   const Icon = cfg.icon;
-  const isActing =
-    localStatus.phase === "accepting" || localStatus.phase === "rejecting";
-  const isResolved =
-    localStatus.phase === "accepted" || localStatus.phase === "rejected";
-
-  const senderName =
-    invite.fromUser?.athleteProfile?.displayName ||
-    invite.fromUser?.name ||
-    "Unknown Athlete";
-  const senderLocation = invite.fromUser?.athleteProfile?.locationCity ?? null;
 
   return (
     <motion.div
@@ -207,196 +217,6 @@ function ReceivedInviteCard({
         y: -8,
         transition: { duration: 0.3, delay: 0.8 },
       }}
-      transition={{ type: "spring", stiffness: 280, damping: 24 }}
-      className={`relative bg-[#0a0a0a] border rounded-2xl overflow-hidden transition-all duration-300 ${
-        isResolved
-          ? "border-zinc-800/40"
-          : "border-zinc-800 hover:border-zinc-700"
-      }`}
-    >
-      <div
-        className={`absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r ${cfg.accent}`}
-      />
-
-      <div className="p-6">
-        {/* Header */}
-        <div className="flex items-start justify-between gap-4 mb-5">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-blue-500/10 border border-blue-500/20 rounded-xl flex items-center justify-center shrink-0">
-              <Shield className="w-5 h-5 text-blue-400" />
-            </div>
-            <div>
-              <h3 className="text-base font-black text-white tracking-tight leading-none">
-                {invite.team.name}
-              </h3>
-              <div className="flex items-center gap-1.5 mt-1">
-                <Clock className="w-3 h-3 text-zinc-600" />
-                <span className="text-[10px] text-zinc-600 font-bold">
-                  {new Date(invite.createdAt).toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </span>
-              </div>
-            </div>
-          </div>
-          <div
-            className={`px-3 py-1.5 rounded-xl border text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 shrink-0 ${cfg.color} ${cfg.bg} ${cfg.border}`}
-          >
-            <Icon className="w-3 h-3" /> {cfg.label}
-          </div>
-        </div>
-
-        {/* Sender */}
-        <div className="flex items-center gap-3 p-3 bg-zinc-900/50 border border-zinc-800/60 rounded-xl mb-5">
-          <div className="w-8 h-8 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center shrink-0">
-            <Users className="w-3.5 h-3.5 text-zinc-500" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-[11px] text-zinc-500 font-bold uppercase tracking-wider">
-              Invited by
-            </p>
-            <p className="text-sm font-bold text-white truncate">
-              {senderName}
-            </p>
-            {senderLocation && (
-              <div className="flex items-center gap-1 mt-0.5">
-                <MapPin className="w-2.5 h-2.5 text-zinc-600" />
-                <span className="text-[10px] text-zinc-500">
-                  {senderLocation}
-                </span>
-              </div>
-            )}
-          </div>
-          <ChevronRight className="w-4 h-4 text-zinc-700 shrink-0" />
-        </div>
-
-        {/* CTA */}
-        <AnimatePresence mode="wait">
-          {localStatus.phase === "idle" && (
-            <motion.div
-              key="actions"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="flex gap-2.5"
-            >
-              <button
-                disabled={isActing || isResolved}
-                onClick={() => {
-                  setLocalStatus({ phase: "accepting" });
-                  onAccept(invite.id);
-                }}
-                className="flex-1 py-2.5 rounded-xl font-black text-[11px] uppercase tracking-widest flex items-center justify-center gap-2 bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500 hover:text-white hover:border-emerald-400 transition-all active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Check className="w-3.5 h-3.5" /> Accept
-              </button>
-              <button
-                disabled={isActing || isResolved}
-                onClick={() => {
-                  setLocalStatus({ phase: "rejecting" });
-                  onReject(invite.id);
-                }}
-                className="flex-1 py-2.5 rounded-xl font-black text-[11px] uppercase tracking-widest flex items-center justify-center gap-2 bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500 hover:text-white hover:border-red-400 transition-all active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <X className="w-3.5 h-3.5" /> Decline
-              </button>
-            </motion.div>
-          )}
-
-          {(localStatus.phase === "accepting" ||
-            localStatus.phase === "rejecting") && (
-            <motion.div
-              key="loading"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="flex items-center justify-center py-2.5"
-            >
-              <Loader2 className="w-4 h-4 text-zinc-500 animate-spin mr-2" />
-              <span className="text-[11px] font-bold text-zinc-500 uppercase tracking-widest">
-                {localStatus.phase === "accepting"
-                  ? "Accepting..."
-                  : "Declining..."}
-              </span>
-            </motion.div>
-          )}
-
-          {localStatus.phase === "accepted" && (
-            <motion.div
-              key="accepted"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="flex items-center justify-center gap-2 py-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl"
-            >
-              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-              <span className="text-[11px] font-black text-emerald-400 uppercase tracking-widest">
-                Accepted — You joined the team
-              </span>
-            </motion.div>
-          )}
-
-          {localStatus.phase === "rejected" && (
-            <motion.div
-              key="rejected"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="flex items-center justify-center gap-2 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl"
-            >
-              <XCircle className="w-4 h-4 text-zinc-500" />
-              <span className="text-[11px] font-black text-zinc-500 uppercase tracking-widest">
-                Declined
-              </span>
-            </motion.div>
-          )}
-
-          {localStatus.phase === "error" && (
-            <motion.div
-              key="error"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="space-y-2"
-            >
-              <div className="flex items-center justify-center gap-2 py-2.5 bg-red-500/10 border border-red-500/20 rounded-xl">
-                <XCircle className="w-4 h-4 text-red-400" />
-                <span className="text-[11px] font-bold text-red-400">
-                  {localStatus.message}
-                </span>
-              </div>
-              <button
-                onClick={() => setLocalStatus({ phase: "idle" })}
-                className="w-full py-2 text-[10px] font-black uppercase tracking-widest text-zinc-500 hover:text-white transition-colors cursor-pointer"
-              >
-                Try Again
-              </button>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-
-      <StatusUpdaterPortal inviteId={invite.id} setStatus={setLocalStatus} />
-    </motion.div>
-  );
-}
-
-// ─── SENT CARD ────────────────────────────────────────────────────────────────
-
-function SentInviteCard({ invite }: { invite: SentInvite }) {
-  const cfg = DISCIPLINE_CONFIG[invite.role];
-  const Icon = cfg.icon;
-  const recipientName =
-    invite.toUser?.athleteProfile?.displayName ||
-    invite.toUser?.name ||
-    "Unknown Athlete";
-  const recipientCity = invite.toUser?.athleteProfile?.locationCity ?? null;
-
-  return (
-    <motion.div
-      layout
-      initial={{ opacity: 0, y: 16, scale: 0.97 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ type: "spring", stiffness: 280, damping: 24 }}
       className="relative bg-[#0a0a0a] border border-zinc-800 hover:border-zinc-700 rounded-2xl overflow-hidden transition-all duration-300"
     >
@@ -413,7 +233,8 @@ function SentInviteCard({ invite }: { invite: SentInvite }) {
             </div>
             <div>
               <h3 className="text-base font-black text-white tracking-tight leading-none">
-                {invite?.team?.name}
+                {/* null-safe: team can be null from stale cache */}
+                {invite.team?.name ?? "Unknown Team"}
               </h3>
               <div className="flex items-center gap-1.5 mt-1">
                 <Clock className="w-3 h-3 text-zinc-600" />
@@ -435,23 +256,23 @@ function SentInviteCard({ invite }: { invite: SentInvite }) {
           </div>
         </div>
 
-        {/* Recipient */}
+        {/* User row */}
         <div className="flex items-center gap-3 p-3 bg-zinc-900/50 border border-zinc-800/60 rounded-xl mb-5">
           <div className="w-8 h-8 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center shrink-0">
             <Users className="w-3.5 h-3.5 text-zinc-500" />
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-[11px] text-zinc-500 font-bold uppercase tracking-wider">
-              Sent to
+              {userLabel}
             </p>
             <p className="text-sm font-bold text-white truncate">
-              {recipientName}
+              {userSnippet.name ?? "Unknown Athlete"}
             </p>
-            {recipientCity && (
+            {userSnippet.city && (
               <div className="flex items-center gap-1 mt-0.5">
                 <MapPin className="w-2.5 h-2.5 text-zinc-600" />
                 <span className="text-[10px] text-zinc-500">
-                  {recipientCity}
+                  {userSnippet.city}
                 </span>
               </div>
             )}
@@ -459,15 +280,295 @@ function SentInviteCard({ invite }: { invite: SentInvite }) {
           <ChevronRight className="w-4 h-4 text-zinc-700 shrink-0" />
         </div>
 
-        {/* Awaiting badge */}
-        <div className="flex items-center justify-center gap-2 py-2.5 bg-amber-500/5 border border-amber-500/20 rounded-xl">
-          <Loader2 className="w-3.5 h-3.5 text-amber-400 animate-spin" />
-          <span className="text-[11px] font-black text-amber-400 uppercase tracking-widest">
-            Awaiting Response
-          </span>
-        </div>
+        {children}
       </div>
     </motion.div>
+  );
+}
+
+// ─── RECEIVED (PENDING) CARD ─────────────────────────────────────────────────
+
+function ReceivedInviteCard({
+  invite,
+  onAccept,
+  onReject,
+}: {
+  invite: ReceivedInvite;
+  onAccept: (id: string) => void;
+  onReject: (id: string) => void;
+}) {
+  const [localStatus, setLocalStatus] = useState<LocalInviteStatus>({
+    phase: "idle",
+  });
+
+  const cfg = DISCIPLINE_CONFIG[invite.role];
+  const isActing =
+    localStatus.phase === "accepting" || localStatus.phase === "rejecting";
+  const isResolved =
+    localStatus.phase === "accepted" || localStatus.phase === "rejected";
+
+  const senderName =
+    invite.fromUser?.athleteProfile?.displayName ?? invite.fromUser?.name;
+  const senderCity = invite.fromUser?.athleteProfile?.locationCity ?? null;
+
+  return (
+    <InviteCardShell
+      invite={invite}
+      cfg={cfg}
+      userLabel="Invited by"
+      userSnippet={{ name: senderName ?? null, city: senderCity }}
+    >
+      <AnimatePresence mode="wait">
+        {localStatus.phase === "idle" && (
+          <motion.div
+            key="actions"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="flex gap-2.5"
+          >
+            <button
+              disabled={isActing || isResolved}
+              onClick={() => {
+                setLocalStatus({ phase: "accepting" });
+                onAccept(invite.id);
+              }}
+              className="flex-1 py-2.5 rounded-xl font-black text-[11px] uppercase tracking-widest flex items-center justify-center gap-2 bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500 hover:text-white hover:border-emerald-400 transition-all active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Check className="w-3.5 h-3.5" /> Accept
+            </button>
+            <button
+              disabled={isActing || isResolved}
+              onClick={() => {
+                setLocalStatus({ phase: "rejecting" });
+                onReject(invite.id);
+              }}
+              className="flex-1 py-2.5 rounded-xl font-black text-[11px] uppercase tracking-widest flex items-center justify-center gap-2 bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500 hover:text-white hover:border-red-400 transition-all active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <X className="w-3.5 h-3.5" /> Decline
+            </button>
+          </motion.div>
+        )}
+
+        {(localStatus.phase === "accepting" ||
+          localStatus.phase === "rejecting") && (
+          <motion.div
+            key="loading"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="flex items-center justify-center py-2.5"
+          >
+            <Loader2 className="w-4 h-4 text-zinc-500 animate-spin mr-2" />
+            <span className="text-[11px] font-bold text-zinc-500 uppercase tracking-widest">
+              {localStatus.phase === "accepting"
+                ? "Accepting..."
+                : "Declining..."}
+            </span>
+          </motion.div>
+        )}
+
+        {localStatus.phase === "accepted" && (
+          <motion.div
+            key="accepted"
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="flex items-center justify-center gap-2 py-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl"
+          >
+            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+            <span className="text-[11px] font-black text-emerald-400 uppercase tracking-widest">
+              Accepted — You joined the team
+            </span>
+          </motion.div>
+        )}
+
+        {localStatus.phase === "rejected" && (
+          <motion.div
+            key="rejected"
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="flex items-center justify-center gap-2 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl"
+          >
+            <XCircle className="w-4 h-4 text-zinc-500" />
+            <span className="text-[11px] font-black text-zinc-500 uppercase tracking-widest">
+              Declined
+            </span>
+          </motion.div>
+        )}
+
+        {localStatus.phase === "error" && (
+          <motion.div
+            key="error"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="space-y-2"
+          >
+            <div className="flex items-center justify-center gap-2 py-2.5 bg-red-500/10 border border-red-500/20 rounded-xl">
+              <XCircle className="w-4 h-4 text-red-400" />
+              <span className="text-[11px] font-bold text-red-400">
+                {localStatus.message}
+              </span>
+            </div>
+            <button
+              onClick={() => setLocalStatus({ phase: "idle" })}
+              className="w-full py-2 text-[10px] font-black uppercase tracking-widest text-zinc-500 hover:text-white transition-colors cursor-pointer"
+            >
+              Try Again
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <StatusUpdaterPortal inviteId={invite.id} setStatus={setLocalStatus} />
+    </InviteCardShell>
+  );
+}
+
+// ─── SENT CARD ───────────────────────────────────────────────────────────────
+
+function SentInviteCard({
+  invite,
+  onRevoke,
+}: {
+  invite: SentInvite;
+  onRevoke: (id: string) => void;
+}) {
+  const [isRevoking, setIsRevoking] = useState(false);
+  const [revoked, setRevoked] = useState(false);
+
+  const cfg = DISCIPLINE_CONFIG[invite.role];
+  const recipientName =
+    invite.toUser?.athleteProfile?.displayName ?? invite.toUser?.name;
+  const recipientCity = invite.toUser?.athleteProfile?.locationCity ?? null;
+
+  const isPending = invite.status === "PENDING";
+  const isDeclined = invite.status === "REJECTED";
+
+  return (
+    <InviteCardShell
+      invite={invite}
+      cfg={cfg}
+      userLabel="Sent to"
+      userSnippet={{ name: recipientName ?? null, city: recipientCity }}
+    >
+      <AnimatePresence mode="wait">
+        {/* ── PENDING: awaiting badge + revoke button ── */}
+        {isPending && !revoked && (
+          <motion.div
+            key="pending"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="space-y-2.5"
+          >
+            <div className="flex items-center justify-center gap-2 py-2.5 bg-amber-500/5 border border-amber-500/20 rounded-xl">
+              <Loader2 className="w-3.5 h-3.5 text-amber-400 animate-spin" />
+              <span className="text-[11px] font-black text-amber-400 uppercase tracking-widest">
+                Awaiting Response
+              </span>
+            </div>
+
+            <button
+              disabled={isRevoking}
+              onClick={() => {
+                setIsRevoking(true);
+                onRevoke(invite.id);
+              }}
+              className="w-full py-2.5 rounded-xl font-black text-[11px] uppercase tracking-widest flex items-center justify-center gap-2 bg-zinc-900 text-zinc-500 border border-zinc-800 hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/30 transition-all active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isRevoking ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <X className="w-3.5 h-3.5" />
+              )}
+              {isRevoking ? "Revoking..." : "Revoke Invite"}
+            </button>
+          </motion.div>
+        )}
+
+        {/* ── PENDING + revoked: optimistic revoke confirmation ── */}
+        {isPending && revoked && (
+          <motion.div
+            key="revoked"
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="flex items-center justify-center gap-2 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl"
+          >
+            <XCircle className="w-4 h-4 text-zinc-500" />
+            <span className="text-[11px] font-black text-zinc-500 uppercase tracking-widest">
+              Revoked
+            </span>
+          </motion.div>
+        )}
+
+        {/* ── REJECTED by athlete ── */}
+        {isDeclined && (
+          <motion.div
+            key="declined"
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="flex items-center justify-center gap-2 py-2.5 bg-red-500/5 border border-red-500/20 rounded-xl"
+          >
+            <XCircle className="w-4 h-4 text-red-400" />
+            <span className="text-[11px] font-black text-red-400 uppercase tracking-widest">
+              Declined by athlete
+            </span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <RevokeUpdaterPortal inviteId={invite.id} setRevoked={setRevoked} />
+    </InviteCardShell>
+  );
+}
+
+// ─── ACCEPTED CARD ───────────────────────────────────────────────────────────
+
+function AcceptedInviteCard({ invite }: { invite: ReceivedInvite }) {
+  const cfg = DISCIPLINE_CONFIG[invite.role];
+  const senderName =
+    invite.fromUser?.athleteProfile?.displayName ?? invite.fromUser?.name;
+  const senderCity = invite.fromUser?.athleteProfile?.locationCity ?? null;
+
+  return (
+    <InviteCardShell
+      invite={invite}
+      cfg={cfg}
+      userLabel="From"
+      userSnippet={{ name: senderName ?? null, city: senderCity }}
+    >
+      <div className="flex items-center justify-center gap-2 py-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
+        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+        <span className="text-[11px] font-black text-emerald-400 uppercase tracking-widest">
+          Accepted — Joined team
+        </span>
+      </div>
+    </InviteCardShell>
+  );
+}
+
+// ─── REJECTED CARD ───────────────────────────────────────────────────────────
+
+function RejectedInviteCard({ invite }: { invite: ReceivedInvite }) {
+  const cfg = DISCIPLINE_CONFIG[invite.role];
+  const senderName =
+    invite.fromUser?.athleteProfile?.displayName ?? invite.fromUser?.name;
+  const senderCity = invite.fromUser?.athleteProfile?.locationCity ?? null;
+
+  return (
+    <InviteCardShell
+      invite={invite}
+      cfg={cfg}
+      userLabel="From"
+      userSnippet={{ name: senderName ?? null, city: senderCity }}
+    >
+      <div className="flex items-center justify-center gap-2 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl">
+        <XCircle className="w-4 h-4 text-zinc-500" />
+        <span className="text-[11px] font-black text-zinc-500 uppercase tracking-widest">
+          You declined this invite
+        </span>
+      </div>
+    </InviteCardShell>
   );
 }
 
@@ -478,45 +579,52 @@ export default function InvitesDashboard() {
     ActionResponse,
     InviteActionPayload
   >(inviteAction, initialState);
-  // Track which service + invite is in-flight
+
   const pendingService = useRef<InviteActionPayload["service"] | null>(null);
   const pendingInviteId = useRef<string | null>(null);
 
   const [received, setReceived] = useState<ReceivedInvite[]>([]);
   const [sent, setSent] = useState<SentInvite[]>([]);
-  const [activeTab, setActiveTab] = useState<Tab>("received");
+  const [sentDeclined, setSentDeclined] = useState<SentInvite[]>([]);
+  const [accepted, setAccepted] = useState<ReceivedInvite[]>([]);
+  const [rejected, setRejected] = useState<ReceivedInvite[]>([]);
+  const [activeTab, setActiveTab] = useState<Tab>("pending");
   const [isInitialLoad, setIsInitialLoad] = useState(true);
 
-  // ── Initial fetch ──
+  // ── Initial fetch ─────────────────────────────────────────────────────────
   useEffect(() => {
     startTransition(() => {
       dispatch({ service: "GET_INVITES" });
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Handle all state changes ──
+  // ── Handle server action responses ───────────────────────────────────────
   useEffect(() => {
     if (isPending) return;
 
     const service = pendingService.current;
+    const inviteId = pendingInviteId.current;
 
     // ── GET_INVITES ──
     if (service === "GET_INVITES" || service === null) {
       setIsInitialLoad(false);
       if (state.success && state.data) {
-        setReceived(state?.data?.received!);
-        setSent(state.data?.sent!);
+        const data = state.data as InvitesData;
+        setReceived(data.received);
+        setSent(data.sent);
+        setSentDeclined(data.sentDeclined);
+        setAccepted(data.accepted);
+        setRejected(data.rejected);
       }
       pendingService.current = null;
       return;
     }
 
-    const inviteId = pendingInviteId.current;
     if (!inviteId) return;
-    const setter = statusRegistry.get(inviteId);
 
     // ── ACCEPT_INVITE ──
     if (service === "ACCEPT_INVITE") {
+      const setter = statusRegistry.get(inviteId);
       if (state.success) {
         setter?.({ phase: "accepted" });
         setTimeout(() => {
@@ -532,6 +640,7 @@ export default function InvitesDashboard() {
 
     // ── REJECT_INVITE ──
     if (service === "REJECT_INVITE") {
+      const setter = statusRegistry.get(inviteId);
       if (state.success) {
         setter?.({ phase: "rejected" });
         setTimeout(() => {
@@ -545,13 +654,28 @@ export default function InvitesDashboard() {
       }
     }
 
+    // ── REVOKE_INVITE ──
+    if (service === "REVOKE_INVITE") {
+      const trigger = revokeRegistry.get(inviteId);
+      if (state.success) {
+        // Flip the card to "Revoked" state, then remove it from the list
+        trigger?.();
+        setTimeout(() => {
+          setSent((prev) => prev.filter((inv) => inv.id !== inviteId));
+        }, 1200);
+      } else {
+        // Reset the spinner so the user can try again
+        // The card handles this locally via isRevoking — we just need to
+        // let it know the action failed by not calling trigger
+      }
+    }
+
     pendingService.current = null;
     pendingInviteId.current = null;
-
-    console.log(state);
   }, [state, isPending]);
 
-  // ── Dispatch helpers ──
+  // ── Dispatch helpers ──────────────────────────────────────────────────────
+
   const handleAccept = (inviteId: string) => {
     pendingService.current = "ACCEPT_INVITE";
     pendingInviteId.current = inviteId;
@@ -568,30 +692,59 @@ export default function InvitesDashboard() {
     });
   };
 
-  const tabs = [
+  const handleRevoke = (inviteId: string) => {
+    pendingService.current = "REVOKE_INVITE";
+    pendingInviteId.current = inviteId;
+    startTransition(() => {
+      dispatch({ service: "REVOKE_INVITE", inviteId });
+    });
+  };
+
+  // ── Tabs ──────────────────────────────────────────────────────────────────
+
+  const tabs: {
+    key: Tab;
+    label: string;
+    icon: React.ElementType;
+    count: number;
+  }[] = [
     {
-      key: "received" as Tab,
-      label: "Received",
+      key: "pending",
+      label: "Pending",
       icon: Bell,
       count: received.length,
     },
-    { key: "sent" as Tab, label: "Sent", icon: Send, count: sent.length },
+    {
+      key: "sent",
+      label: "Sent",
+      icon: Send,
+      // pending + declined — both live in the sent tab
+      count: sent.length + sentDeclined.length,
+    },
+    {
+      key: "accepted",
+      label: "Accepted",
+      icon: CheckCircle2,
+      count: accepted.length,
+    },
+    {
+      key: "rejected",
+      label: "Declined",
+      icon: XCircle,
+      count: rejected.length,
+    },
   ];
 
-  useEffect(() => {
-    console.log(state);
-  }, [state]);
-
-  if (isPending && !state.data)
+  if (isPending && !state.data) {
     return (
       <div className="pt-5">
         <DashboardSkeleton />
       </div>
     );
+  }
 
   return (
     <div className="min-h-screen bg-black font-sans text-zinc-400 p-4 sm:p-6 lg:p-10 selection:bg-blue-500/30 relative overflow-x-hidden">
-      {/* Ambient */}
       <div className="fixed top-[-20%] left-[-10%] w-[60%] h-[60%] bg-blue-600/[0.04] rounded-full blur-[200px] pointer-events-none" />
       <div className="fixed bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-indigo-600/[0.03] rounded-full blur-[180px] pointer-events-none" />
 
@@ -618,14 +771,14 @@ export default function InvitesDashboard() {
               <button
                 key={key}
                 onClick={() => setActiveTab(key)}
-                className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all duration-200 cursor-pointer ${
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all duration-200 cursor-pointer ${
                   activeTab === key
                     ? "bg-zinc-800 text-white shadow-sm"
                     : "text-zinc-500 hover:text-zinc-300"
                 }`}
               >
-                <TabIcon className="w-3 h-3" />
-                {label}
+                <TabIcon className="w-3 h-3 shrink-0" />
+                <span className="hidden sm:inline">{label}</span>
                 {!isInitialLoad && count > 0 && (
                   <span
                     className={`px-1.5 py-0.5 rounded-md text-[9px] font-black ${
@@ -646,6 +799,7 @@ export default function InvitesDashboard() {
 
         {/* ── CONTENT ── */}
         <AnimatePresence mode="wait">
+          {/* SKELETON */}
           {isInitialLoad ? (
             <motion.div
               key="skeleton"
@@ -658,15 +812,15 @@ export default function InvitesDashboard() {
                 <InviteSkeleton key={i} />
               ))}
             </motion.div>
-          ) : activeTab === "received" ? (
+          ) : activeTab === "pending" ? (
             received.length === 0 ? (
               <EmptyState
-                key="received-empty"
+                key="pending-empty"
                 label="When team owners invite you to fill a role, they'll appear here."
               />
             ) : (
               <motion.div
-                key="received-list"
+                key="pending-list"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 className="space-y-4"
@@ -683,20 +837,70 @@ export default function InvitesDashboard() {
                 </AnimatePresence>
               </motion.div>
             )
-          ) : sent.length === 0 ? (
+          ) : activeTab === "sent" ? (
+            // Empty only when BOTH pending and declined are empty
+            sent.length === 0 && sentDeclined.length === 0 ? (
+              <EmptyState
+                key="sent-empty"
+                label="Invites you send to athletes will appear here."
+              />
+            ) : (
+              <motion.div
+                key="sent-list"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="space-y-4"
+              >
+                {/* Pending sent invites first — actionable */}
+                {sent.map((invite) => (
+                  <SentInviteCard
+                    key={invite.id}
+                    invite={invite}
+                    onRevoke={handleRevoke}
+                  />
+                ))}
+                {/* Declined sent invites below — informational */}
+                {sentDeclined.map((invite) => (
+                  <SentInviteCard
+                    key={invite.id}
+                    invite={invite}
+                    onRevoke={handleRevoke}
+                  />
+                ))}
+              </motion.div>
+            )
+          ) : activeTab === "accepted" ? (
+            accepted.length === 0 ? (
+              <EmptyState
+                key="accepted-empty"
+                label="Invites you've accepted will show here."
+              />
+            ) : (
+              <motion.div
+                key="accepted-list"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="space-y-4"
+              >
+                {accepted.map((invite) => (
+                  <AcceptedInviteCard key={invite.id} invite={invite} />
+                ))}
+              </motion.div>
+            )
+          ) : rejected.length === 0 ? (
             <EmptyState
-              key="sent-empty"
-              label="Invites you send to athletes will appear here."
+              key="rejected-empty"
+              label="Invites you've declined will show here."
             />
           ) : (
             <motion.div
-              key="sent-list"
+              key="rejected-list"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               className="space-y-4"
             >
-              {sent.map((invite) => (
-                <SentInviteCard key={invite.id} invite={invite} />
+              {rejected.map((invite) => (
+                <RejectedInviteCard key={invite.id} invite={invite} />
               ))}
             </motion.div>
           )}

@@ -229,9 +229,9 @@ export default function Dashboard() {
     }
   };
 
-  useEffect(() => {
-    console.log(state);
-  }, [state]);
+  // useEffect(() => {
+  //   console.log("from main dashboard",state);
+  // }, [state]);
 
   if (isPending && !state.data)
     return (

@@ -1,4 +1,4 @@
-"use server"
+"use server";
 import { getCurrentUser } from "../lib/auth";
 import { prisma } from "../lib/prisma";
 import setRedis from "../lib/redis";
@@ -11,8 +11,6 @@ type Discipline = "SWIMMER" | "CYCLIST" | "RUNNER";
 const ALL_DISCIPLINES: Discipline[] = ["SWIMMER", "CYCLIST", "RUNNER"];
 
 // ─── SCORING ─────────────────────────────────────────────────────────────────
-
-
 
 const EXPERIENCE_ORDER = ["BEGINNER", "INTERMEDIATE", "ADVANCED"];
 const MAX_RAW_SCORE = 40 + 20 + 20 + 15 + 5; // 100
@@ -164,10 +162,11 @@ export const getMainDashboardData = catchErrors(
     const athleteData = userData.data.athleteData;
 
     // ── Round-trip 1: all three cache reads in parallel ──
+    // ─── Round-trip 1: all three cache reads in parallel ──
     const [cachedTeam, cachedReceived, cachedSent] = await Promise.all([
       setRedis.get(`myteam:${userId}`),
-      setRedis.get(`invites:received:${userId}`),
-      setRedis.get(`invites:sent:${userId}`),
+      setRedis.get(`invites:received:pending:${userId}`),
+      setRedis.get(`invites:sent:pending:${userId}`),
     ]);
 
     const parse = <T>(v: unknown): T | null => {
@@ -225,8 +224,9 @@ export const getMainDashboardData = catchErrors(
           })
           .then(async (result) => {
             received = result;
+            // inside the !received DB branch
             await setRedis.set(
-              `invites:received:${userId}`,
+              `invites:received:pending:${userId}`, // was: invites:received:${userId}
               JSON.stringify(result),
               { ex: 60 * 5 },
             );
@@ -264,8 +264,9 @@ export const getMainDashboardData = catchErrors(
           })
           .then(async (result) => {
             sent = result;
+            // inside the !sent DB branch
             await setRedis.set(
-              `invites:sent:${userId}`,
+              `invites:sent:pending:${userId}`, // was: invites:sent:${userId}
               JSON.stringify(result),
               { ex: 60 * 5 },
             );

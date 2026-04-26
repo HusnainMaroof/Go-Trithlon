@@ -430,6 +430,10 @@ export default function AthleteMarketplace() {
     });
   };
 
+  useEffect(() => {
+    console.log(state);
+  }, [state]);
+
   return (
     <div className="min-h-screen bg-[#000000] text-zinc-400 font-sans p-4 sm:p-6 md:p-12 overflow-x-hidden selection:bg-blue-500/30 relative">
       <div className="fixed top-0 left-1/4 w-[500px] h-[500px] bg-blue-600/[0.03] blur-[150px] rounded-full pointer-events-none" />

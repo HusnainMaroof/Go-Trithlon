@@ -5,13 +5,7 @@ import { redirect } from "next/navigation";
 import React from "react";
 
 const pages = async () => {
-  const user = await getCurrentUser();
-
-  if (!user.authsuccess.data.userToken) {
-    console.log("restriected");
-
-    redirect("/");
-  }
+  
 
   return (
     <div className="w-full">
