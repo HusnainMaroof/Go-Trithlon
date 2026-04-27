@@ -1,4 +1,8 @@
-// type/dashboardtype.ts
+// type/ProfileType.ts
+// ─── Single source of truth for all set-profile types ────────────────────────
+// Both the action (setprofileAction.ts) and the component (ProfileSetup.tsx)
+// import exclusively from here. Delete any old ProfileType or dashboardtype
+// that defined setProfilePayload with swimTime100m / cycleTime10km / runTime5km.
 
 import {
   CompetitionLevel,
@@ -8,7 +12,9 @@ import {
 
 export { CompetitionLevel, Discipline, ExperienceLevel };
 
-// ─── Race Distances per discipline ───────────────────────────────────────────
+// ─── Race Distances ───────────────────────────────────────────────────────────
+// These must stay in sync with the distance strings in the RaceResult schema.
+// The Prisma column is String (flexible), but TypeScript enforces this union.
 
 export const RUNNER_DISTANCES = [
   "5K",
@@ -31,7 +37,7 @@ export type RaceDistance = RunnerDistance | SwimmerDistance | CyclistDistance;
 export type RaceResultInput = {
   discipline: Discipline;
   distance: RaceDistance;
-  /** Stored in seconds. Convert MM:SS → seconds before sending. */
+  /** Always stored in seconds. The component converts H:MM:SS or MM:SS → seconds before sending. */
   timeSeconds: number;
 };
 
@@ -56,6 +62,8 @@ export type setProfilePayload = {
 };
 
 // ─── Action response ──────────────────────────────────────────────────────────
+// message is string | null — NOT optional. The action must always set it
+// explicitly so the component can safely read state.message without guards.
 
 export type ActionResponse = {
   success: boolean;
@@ -63,3 +71,56 @@ export type ActionResponse = {
   message: string | null;
   data: unknown;
 };
+
+export const PAKISTAN_CITIES = [
+  "Islamabad",
+  "Karachi",
+  "Lahore",
+  "Rawalpindi",
+  "Faisalabad",
+  "Multan",
+  "Peshawar",
+  "Quetta",
+  "Sialkot",
+  "Gujranwala",
+  "Hyderabad",
+  "Abbottabad",
+  "Bahawalpur",
+  "Sargodha",
+  "Sukkur",
+  "Larkana",
+  "Sheikhupura",
+  "Rahim Yar Khan",
+  "Jhang",
+  "Gujrat",
+  "Mardan",
+  "Kasur",
+  "Dera Ghazi Khan",
+  "Nawabshah",
+  "Mingora",
+  "Mirpur",
+  "Muzaffarabad",
+  "Gilgit",
+  "Skardu",
+  "Turbat",
+  "Khuzdar",
+  "Hub",
+  "Jacobabad",
+  "Shikarpur",
+  "Okara",
+  "Sahiwal",
+  "Hafizabad",
+  "Wah Cantonment",
+  "Attock",
+  "Chakwal",
+  "Jhelum",
+  "Mandi Bahauddin",
+  "Narowal",
+  "Nankana Sahib",
+  "Toba Tek Singh",
+  "Vehari",
+  "Lodhran",
+  "Khanewal",
+  "Pakpattan",
+  "Bahawalnagar",
+];

@@ -61,11 +61,8 @@ const RegistrationPopup = ({}) => {
               </div>
 
               {/* Action Button - Google Only */}
-              <div className="w-full pt-4">
-                <button
-                  onClick={handelgoogle}
-                  className="w-full flex items-center justify-center gap-3 px-6 py-3.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 text-white transition-all cursor-pointer group shadow-sm"
-                >
+              <div onClick={handelgoogle} className="w-full pt-4">
+                <button className="w-full flex items-center justify-center gap-3 px-6 py-3.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 text-white transition-all cursor-pointer group shadow-sm">
                   <svg
                     className="w-5 h-5 group-hover:scale-110 transition-transform"
                     viewBox="0 0 24 24"

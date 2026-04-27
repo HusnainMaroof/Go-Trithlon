@@ -13,16 +13,20 @@ import {
 const TTL = {
   receivedPending: 10,
   sentPending: 30,
-  resolved: 120, // accepted/rejected mutate rarely
+  resolved: 120,
+  team: 60 * 60 * 24 * 7,
 } as const;
 
 const cacheKey = {
   receivedPending: (userId: string) => `invites:received:pending:${userId}`,
   sentPending: (userId: string) => `invites:sent:pending:${userId}`,
-  sentDeclined: (userId: string) => `invites:sent:declined:${userId}`, // ← NEW
+  sentDeclined: (userId: string) => `invites:sent:declined:${userId}`,
   accepted: (userId: string) => `invites:received:accepted:${userId}`,
   rejected: (userId: string) => `invites:received:rejected:${userId}`,
+  myTeam: (userId: string) => `myteam:${userId}`,
+  session: (userId: string) => `auth_session:${userId}`,
 } as const;
+
 // ─── CACHE HELPERS ────────────────────────────────────────────────────────────
 
 async function getCached<T>(key: string): Promise<T | null> {
@@ -31,7 +35,6 @@ async function getCached<T>(key: string): Promise<T | null> {
     if (!raw) return null;
     return (typeof raw === "string" ? JSON.parse(raw) : raw) as T;
   } catch {
-    // Never let a cache read break the request
     return null;
   }
 }
@@ -44,7 +47,7 @@ async function setCached(
   try {
     await setRedis.set(key, JSON.stringify(data), { ex: ttl });
   } catch {
-    // Cache write failure is non-fatal
+    // Non-fatal
   }
 }
 
@@ -52,7 +55,7 @@ async function bustCache(...keys: string[]): Promise<void> {
   try {
     await Promise.all(keys.map((k) => setRedis.del(k)));
   } catch {
-    // Cache bust failure is non-fatal — stale data will expire naturally
+    // Non-fatal — stale data expires via TTL
   }
 }
 
@@ -64,9 +67,7 @@ const receivedInclude = {
     select: {
       id: true,
       name: true,
-      athleteProfile: {
-        select: { displayName: true, locationCity: true },
-      },
+      athleteProfile: { select: { displayName: true, locationCity: true } },
     },
   },
 } as const;
@@ -77,18 +78,22 @@ const sentInclude = {
     select: {
       id: true,
       name: true,
-      athleteProfile: {
-        select: { displayName: true, locationCity: true },
-      },
+      athleteProfile: { select: { displayName: true, locationCity: true } },
     },
   },
   fromUser: {
     select: {
       id: true,
       name: true,
-      athleteProfile: {
-        select: { displayName: true, locationCity: true },
-      },
+      athleteProfile: { select: { displayName: true, locationCity: true } },
+    },
+  },
+} as const;
+
+const teamInclude = {
+  members: {
+    include: {
+      user: { include: { athleteProfile: true } },
     },
   },
 } as const;
@@ -102,20 +107,20 @@ export const inviteService = {
     try {
       const rKey = cacheKey.receivedPending(userId);
       const sKey = cacheKey.sentPending(userId);
-      const sdKey = cacheKey.sentDeclined(userId); // ← NEW
+      const sdKey = cacheKey.sentDeclined(userId);
       const aKey = cacheKey.accepted(userId);
       const rejKey = cacheKey.rejected(userId);
 
       const [
         cachedReceived,
         cachedSent,
-        cachedSentDeclined, // ← NEW
+        cachedSentDeclined,
         cachedAccepted,
         cachedRejected,
       ] = await Promise.all([
         getCached<ReceivedInvite[]>(rKey),
         getCached<SentInvite[]>(sKey),
-        getCached<SentInvite[]>(sdKey), // ← NEW
+        getCached<SentInvite[]>(sdKey),
         getCached<ReceivedInvite[]>(aKey),
         getCached<ReceivedInvite[]>(rejKey),
       ]);
@@ -123,7 +128,7 @@ export const inviteService = {
       const allCached =
         cachedReceived &&
         cachedSent &&
-        cachedSentDeclined && // ← NEW
+        cachedSentDeclined &&
         cachedAccepted &&
         cachedRejected;
 
@@ -135,7 +140,7 @@ export const inviteService = {
           data: {
             received: cachedReceived,
             sent: cachedSent,
-            sentDeclined: cachedSentDeclined, // ← NEW
+            sentDeclined: cachedSentDeclined,
             accepted: cachedAccepted,
             rejected: cachedRejected,
           },
@@ -145,7 +150,7 @@ export const inviteService = {
       const [
         freshReceived,
         freshSent,
-        freshSentDeclined, // ← NEW
+        freshSentDeclined,
         freshAccepted,
         freshRejected,
       ] = await Promise.all([
@@ -165,7 +170,6 @@ export const inviteService = {
               orderBy: { createdAt: "desc" },
             }),
 
-        // ← NEW: invites you sent that the recipient declined
         cachedSentDeclined
           ? Promise.resolve(cachedSentDeclined)
           : prisma.teamInvite.findMany({
@@ -198,7 +202,7 @@ export const inviteService = {
         ...(!cachedSent ? [setCached(sKey, freshSent, TTL.sentPending)] : []),
         ...(!cachedSentDeclined
           ? [setCached(sdKey, freshSentDeclined, TTL.resolved)]
-          : []), // ← NEW
+          : []),
         ...(!cachedAccepted
           ? [setCached(aKey, freshAccepted, TTL.resolved)]
           : []),
@@ -214,7 +218,7 @@ export const inviteService = {
         data: {
           received: freshReceived as ReceivedInvite[],
           sent: freshSent as SentInvite[],
-          sentDeclined: freshSentDeclined as SentInvite[], // ← NEW
+          sentDeclined: freshSentDeclined as SentInvite[],
           accepted: freshAccepted as ReceivedInvite[],
           rejected: freshRejected as ReceivedInvite[],
         },
@@ -259,12 +263,10 @@ export const inviteService = {
         };
       }
 
-      const [roleAlreadyFilled, receiverProfile, duplicateInvite] =
+      const [roleAlreadyFilled, receiverProfile, existingInvite] =
         await Promise.all([
           prisma.myTeamMember.findUnique({
-            where: {
-              teamId_role: { teamId: team.id, role: payload.role },
-            },
+            where: { teamId_role: { teamId: team.id, role: payload.role } },
           }),
           prisma.athleteProfile.findUnique({
             where: { userId: payload.toUserId },
@@ -309,9 +311,11 @@ export const inviteService = {
         };
       }
 
+      // Block re-send only for PENDING or ACCEPTED — those are still active.
+      // REJECTED and REVOKED are fine to resend; the upsert below handles them.
       if (
-        duplicateInvite &&
-        !["REJECTED", "REVOKED"].includes(duplicateInvite.status)
+        existingInvite &&
+        !["REJECTED", "REVOKED"].includes(existingInvite.status)
       ) {
         return {
           success: false,
@@ -321,8 +325,27 @@ export const inviteService = {
         };
       }
 
-      await prisma.teamInvite.create({
-        data: {
+      // ── UPSERT ────────────────────────────────────────────────────────────
+      // The unique constraint is (teamId, toUserId, role).
+      // prisma.create crashes if a REJECTED or REVOKED row already exists for
+      // this combination. Upsert resets the existing row to PENDING instead
+      // of trying to insert a duplicate.
+      await prisma.teamInvite.upsert({
+        where: {
+          teamId_toUserId_role: {
+            teamId: team.id,
+            toUserId: payload.toUserId,
+            role: payload.role,
+          },
+        },
+        // Existing row (REJECTED or REVOKED) — reset to PENDING
+        update: {
+          status: "PENDING",
+          fromUserId,
+          updatedAt: new Date(),
+        },
+        // No prior row — create fresh
+        create: {
           teamId: team.id,
           fromUserId,
           toUserId: payload.toUserId,
@@ -330,10 +353,12 @@ export const inviteService = {
         },
       });
 
-      // Bust pending buckets for both sides
       await bustCache(
         cacheKey.receivedPending(payload.toUserId),
         cacheKey.sentPending(fromUserId),
+        // Bust sentDeclined — the previously declined invite is now PENDING
+        // again so it must not appear in the declined tab anymore
+        cacheKey.sentDeclined(fromUserId),
       );
 
       return {
@@ -392,9 +417,7 @@ export const inviteService = {
       }
 
       const roleAlreadyFilled = await prisma.myTeamMember.findUnique({
-        where: {
-          teamId_role: { teamId: invite.teamId, role: invite.role },
-        },
+        where: { teamId_role: { teamId: invite.teamId, role: invite.role } },
       });
 
       if (roleAlreadyFilled) {
@@ -406,7 +429,7 @@ export const inviteService = {
         };
       }
 
-      await Promise.all([
+      await prisma.$transaction([
         prisma.myTeamMember.create({
           data: { teamId: invite.teamId, userId, role: invite.role },
         }),
@@ -420,15 +443,43 @@ export const inviteService = {
         }),
       ]);
 
-      // Bust:
-      // - receivedPending (invite is no longer pending)
-      // - accepted        (new entry now exists there)
-      // - sentPending     (sender's outgoing pending list changes)
-      await bustCache(
-        cacheKey.receivedPending(userId),
-        cacheKey.accepted(userId),
-        cacheKey.sentPending(invite.fromUserId),
-      );
+      const updatedTeam = await prisma.myTeam.findUnique({
+        where: { id: invite.teamId },
+        include: teamInclude,
+      });
+
+      const sessionKey = cacheKey.session(userId);
+      const cachedSession =
+        await getCached<Record<string, unknown>>(sessionKey);
+
+      await Promise.all([
+        bustCache(
+          cacheKey.receivedPending(userId),
+          cacheKey.accepted(userId),
+          cacheKey.sentPending(invite.fromUserId),
+          cacheKey.sentDeclined(invite.fromUserId),
+        ),
+
+        updatedTeam
+          ? setCached(cacheKey.myTeam(invite.fromUserId), updatedTeam, TTL.team)
+          : setRedis.del(cacheKey.myTeam(invite.fromUserId)),
+
+        updatedTeam
+          ? setCached(cacheKey.myTeam(userId), updatedTeam, TTL.team)
+          : Promise.resolve(),
+
+        cachedSession
+          ? (async () => {
+              const ttl = await setRedis.ttl(sessionKey);
+              const updated = { ...cachedSession, inTeam: true };
+              await setRedis.set(
+                sessionKey,
+                JSON.stringify(updated),
+                ttl > 0 ? { ex: ttl } : undefined,
+              );
+            })()
+          : Promise.resolve(),
+      ]);
 
       return {
         success: true,
@@ -491,12 +542,11 @@ export const inviteService = {
         data: { status: "REJECTED" },
       });
 
-      // rejectInvite — at the end after prisma.update
       await bustCache(
         cacheKey.receivedPending(userId),
         cacheKey.rejected(userId),
         cacheKey.sentPending(invite.fromUserId),
-        cacheKey.sentDeclined(invite.fromUserId), // ← NEW: sender now has a declined entry
+        cacheKey.sentDeclined(invite.fromUserId),
       );
 
       return {
@@ -506,7 +556,6 @@ export const inviteService = {
         data: null,
       };
     } catch (error) {
-      console.error("Reject Invite Error:", error);
       return {
         success: false,
         error: true,
@@ -561,7 +610,6 @@ export const inviteService = {
         data: { status: "REVOKED" },
       });
 
-      // Bust sender's pending sent list and receiver's pending received list
       await bustCache(
         cacheKey.sentPending(userId),
         cacheKey.receivedPending(invite.toUserId),
@@ -574,7 +622,6 @@ export const inviteService = {
         data: null,
       };
     } catch (error) {
-      console.error("Revoke Invite Error:", error);
       return {
         success: false,
         error: true,

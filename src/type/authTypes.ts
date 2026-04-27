@@ -7,6 +7,7 @@ export interface AuthSuccess {
   success: boolean;
   authMessage: string;
   data: {
+    userId: string;
     sessionId?: string;
     userToken: string;
     email: string;
@@ -31,6 +32,7 @@ export const authFalse: AuthSuccess = {
   success: false,
   authMessage: "",
   data: {
+    userId: "",
     sessionId: "",
     userToken: "",
     email: "",
@@ -42,6 +44,7 @@ export const authFalse: AuthSuccess = {
 };
 
 export type UserType = {
+  userId?: string;
   sessionId?: string;
   userToken: string;
   displayName: string;

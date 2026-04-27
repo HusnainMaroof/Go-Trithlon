@@ -147,7 +147,6 @@ async function getSuggestedAthletes(
 }
 
 // ─── MAIN ACTION ─────────────────────────────────────────────────────────────
-
 export const getMainDashboardData = catchErrors(
   async (_prevState: ActionResponse): Promise<ActionResponse> => {
     const getUser = await getCurrentUser();
@@ -162,7 +161,6 @@ export const getMainDashboardData = catchErrors(
     const athleteData = userData.data.athleteData;
 
     // ── Round-trip 1: all three cache reads in parallel ──
-    // ─── Round-trip 1: all three cache reads in parallel ──
     const [cachedTeam, cachedReceived, cachedSent] = await Promise.all([
       setRedis.get(`myteam:${userId}`),
       setRedis.get(`invites:received:pending:${userId}`),
@@ -185,7 +183,13 @@ export const getMainDashboardData = catchErrors(
       dbPromises.push(
         prisma.myTeam
           .findFirst({
-            where: { ownerId: userId },
+            // ─── UPDATED: Check for Owner OR Member ───
+            where: {
+              OR: [
+                { ownerId: userId },
+                { members: { some: { userId: userId } } },
+              ],
+            },
             include: {
               members: {
                 include: { user: { include: { athleteProfile: true } } },
@@ -224,9 +228,8 @@ export const getMainDashboardData = catchErrors(
           })
           .then(async (result) => {
             received = result;
-            // inside the !received DB branch
             await setRedis.set(
-              `invites:received:pending:${userId}`, // was: invites:received:${userId}
+              `invites:received:pending:${userId}`,
               JSON.stringify(result),
               { ex: 60 * 5 },
             );
@@ -264,9 +267,8 @@ export const getMainDashboardData = catchErrors(
           })
           .then(async (result) => {
             sent = result;
-            // inside the !sent DB branch
             await setRedis.set(
-              `invites:sent:pending:${userId}`, // was: invites:sent:${userId}
+              `invites:sent:pending:${userId}`,
               JSON.stringify(result),
               { ex: 60 * 5 },
             );

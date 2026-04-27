@@ -27,17 +27,15 @@ export const getCurrentUser = async (): Promise<AuthPayload> => {
     };
 
   // console.log("from auth.ts", session);
-const parsed =
-  typeof session === "string"
-    ? JSON.parse(session)
-    : session;
+  const parsed = typeof session === "string" ? JSON.parse(session) : session;
   return {
     autherror: { error: false, message: "" },
     authsuccess: {
       success: true,
       authMessage: "auth",
       data: {
-        sessionId : auth_sessionId,
+        userId: parsed.userId,
+        sessionId: auth_sessionId,
         email: parsed?.email!,
         displayName: parsed?.displayName!,
         userToken: parsed?.userToken!,

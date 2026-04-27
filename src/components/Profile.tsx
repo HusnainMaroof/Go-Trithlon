@@ -33,6 +33,7 @@ import {
   CYCLIST_DISTANCES,
   Discipline,
   ExperienceLevel,
+  PAKISTAN_CITIES,
   RaceDistance,
   RaceResultInput,
   RUNNER_DISTANCES,
@@ -43,64 +44,14 @@ import { setprofileAction } from "../actions/SetProfileAction";
 
 // ─── Pakistan Cities ──────────────────────────────────────────────────────────
 
-const PAKISTAN_CITIES = [
-  "Islamabad",
-  "Karachi",
-  "Lahore",
-  "Rawalpindi",
-  "Faisalabad",
-  "Multan",
-  "Peshawar",
-  "Quetta",
-  "Sialkot",
-  "Gujranwala",
-  "Hyderabad",
-  "Abbottabad",
-  "Bahawalpur",
-  "Sargodha",
-  "Sukkur",
-  "Larkana",
-  "Sheikhupura",
-  "Rahim Yar Khan",
-  "Jhang",
-  "Gujrat",
-  "Mardan",
-  "Kasur",
-  "Dera Ghazi Khan",
-  "Nawabshah",
-  "Mingora",
-  "Mirpur",
-  "Muzaffarabad",
-  "Gilgit",
-  "Skardu",
-  "Turbat",
-  "Khuzdar",
-  "Hub",
-  "Jacobabad",
-  "Shikarpur",
-  "Okara",
-  "Sahiwal",
-  "Hafizabad",
-  "Wah Cantonment",
-  "Attock",
-  "Chakwal",
-  "Jhelum",
-  "Mandi Bahauddin",
-  "Narowal",
-  "Nankana Sahib",
-  "Toba Tek Singh",
-  "Vehari",
-  "Lodhran",
-  "Khanewal",
-  "Pakpattan",
-  "Bahawalnagar",
-];
+
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type RaceEntry = {
   distance: RaceDistance;
   discipline: Discipline;
+  /** Raw string as typed by the user — either MM:SS or H:MM:SS */
   mmss: string;
 };
 
@@ -131,15 +82,58 @@ const initialFormState: FormState = {
   achievements: [],
 };
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function mmssToSeconds(mmss: string): number {
-  const parts = mmss.split(":");
-  if (parts.length !== 2) return NaN;
-  const mm = parseInt(parts[0], 10);
-  const ss = parseInt(parts[1], 10);
-  if (isNaN(mm) || isNaN(ss) || ss >= 60) return NaN;
-  return mm * 60 + ss;
+function timeToSeconds(val: string): number {
+  const parts = val.split(":");
+  if (parts.length === 2) {
+    // MM:SS
+    const mm = parseInt(parts[0], 10);
+    const ss = parseInt(parts[1], 10);
+    if (isNaN(mm) || isNaN(ss) || ss >= 60 || mm < 0) return NaN;
+    return mm * 60 + ss;
+  }
+  if (parts.length === 3) {
+    // H:MM:SS
+    const hh = parseInt(parts[0], 10);
+    const mm = parseInt(parts[1], 10);
+    const ss = parseInt(parts[2], 10);
+    if (isNaN(hh) || isNaN(mm) || isNaN(ss) || hh < 0 || mm >= 60 || ss >= 60)
+      return NaN;
+    return hh * 3600 + mm * 60 + ss;
+  }
+  return NaN;
+}
+
+
+function needsHourFormat(disc: Discipline, distance: RaceDistance): boolean {
+  return (
+    (disc === "CYCLIST" && (distance === "90K" || distance === "180K")) ||
+    (disc === "RUNNER" &&
+      (distance === "Half Marathon" || distance === "Full Marathon")) ||
+    (disc === "SWIMMER" && distance === "5K Open Water")
+  );
+}
+
+
+function autoColon(raw: string, prev: string, needsHours: boolean): string {
+  // Only auto-insert when typing forward (not deleting)
+  if (raw.length <= prev.length) return raw;
+
+  const colonCount = (raw.match(/:/g) || []).length;
+
+  if (!needsHours) {
+    // MM:SS — first colon after 2 digits
+    if (colonCount === 0 && raw.length === 2) return raw + ":";
+    return raw;
+  }
+
+  // H:MM:SS — first colon after 1 digit, second colon after H:MM
+  if (colonCount === 0 && raw.length === 1) return raw + ":";
+  if (colonCount === 1) {
+    const afterFirst = raw.split(":")[1] ?? "";
+    if (afterFirst.length === 2) return raw + ":";
+  }
+  return raw;
 }
 
 function formatEnum(val: string | null): string {
@@ -160,7 +154,6 @@ function getDisciplineStyle(disc: Discipline) {
       iconColor: "text-cyan-400",
       border: "border-cyan-500/40",
       pillSelected: "border-cyan-500/50 bg-zinc-900 text-white",
-      dot: "bg-cyan-400",
     };
   if (disc === "CYCLIST")
     return {
@@ -168,14 +161,12 @@ function getDisciplineStyle(disc: Discipline) {
       iconColor: "text-amber-400",
       border: "border-amber-500/40",
       pillSelected: "border-amber-500/50 bg-zinc-900 text-white",
-      dot: "bg-amber-400",
     };
   return {
     badge: "text-emerald-400 border-emerald-500/30 bg-emerald-500/10",
     iconColor: "text-emerald-400",
     border: "border-emerald-500/40",
     pillSelected: "border-emerald-500/50 bg-zinc-900 text-white",
-    dot: "bg-emerald-400",
   };
 }
 
@@ -191,8 +182,7 @@ function DiscIcon({
   return <Footprints className={className} />;
 }
 
-// ─── City Dropdown ─────────────────────────────────────────────────────────────
-// Fully inline — expands downward inside the form flow, no z-index/overlap issues.
+// ─── City Dropdown ────────────────────────────────────────────────────────────
 
 function CityDropdown({
   value,
@@ -216,7 +206,6 @@ function CityDropdown({
       (c) => c.toLowerCase() === search.trim().toLowerCase(),
     );
 
-  // Close on outside click
   useEffect(() => {
     function onOutside(e: MouseEvent) {
       if (
@@ -231,7 +220,6 @@ function CityDropdown({
     return () => document.removeEventListener("mousedown", onOutside);
   }, []);
 
-  // Auto-focus search when opening
   useEffect(() => {
     if (open) setTimeout(() => searchRef.current?.focus(), 60);
   }, [open]);
@@ -244,11 +232,10 @@ function CityDropdown({
 
   return (
     <div ref={containerRef}>
-      {/* Trigger */}
       <button
         type="button"
         onClick={() => setOpen((p) => !p)}
-        className={`w-full border px-4 py-4 text-left flex items-center justify-between transition-all outline-none ${
+        className={`w-full border px-4 py-4 text-left flex items-center justify-between transition-all outline-none cursor-pointer relative z-100 ${
           open
             ? "bg-zinc-900 border-blue-500 border-b-zinc-800 rounded-t-xl rounded-b-none"
             : "bg-zinc-900/50 border-zinc-800 rounded-xl hover:border-zinc-700"
@@ -274,7 +261,7 @@ function CityDropdown({
               }}
               className="text-zinc-600 hover:text-zinc-300 transition-colors cursor-pointer p-0.5"
             >
-              <X className="w-3.5 h-3.5" />
+              <X className="w-3.5 h-3.5 cursor-pointer" />
             </span>
           )}
           <ChevronDown
@@ -283,7 +270,6 @@ function CityDropdown({
         </div>
       </button>
 
-      {/* Inline expanding panel — no absolute, no overlap */}
       <AnimatePresence>
         {open && (
           <motion.div
@@ -292,11 +278,10 @@ function CityDropdown({
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.18, ease: "easeOut" }}
             style={{ overflow: "hidden" }}
-            className="border border-t-0 border-zinc-700 rounded-b-xl bg-zinc-900"
+            className="border border-t-0 border-zinc-700 rounded-b-xl bg-zinc-900 absolute  w-full z-100"
           >
-            {/* Search bar inside panel */}
             <div className="p-2.5 border-b border-zinc-800">
-              <div className="flex items-center gap-2 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 focus-within:border-blue-500 transition-colors">
+              <div className="flex items-center gap-2 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 focus-within:border-blue-500 transition-colors cursor-pointer">
                 <Search className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
                 <input
                   ref={searchRef}
@@ -304,31 +289,29 @@ function CityDropdown({
                   placeholder="Search city..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="flex-1 bg-transparent text-white placeholder:text-zinc-600 text-sm outline-none"
+                  className="flex-1 bg-transparent text-white placeholder:text-zinc-600 text-sm outline-none cursor-pointer"
                 />
                 {search && (
                   <button
                     type="button"
                     onClick={() => setSearch("")}
-                    className="text-zinc-600 hover:text-zinc-300 transition-colors"
+                    className="text-zinc-600 hover:text-zinc-300 transition-colors cursor-pointer"
                   >
-                    <X className="w-3 h-3" />
+                    <X className="w-3 h-3 cursor-pointer" />
                   </button>
                 )}
               </div>
             </div>
 
-            {/* City list */}
             <div
               className="max-h-44 overflow-y-auto"
               style={{ scrollbarWidth: "none" }}
             >
-              {/* Add custom city option */}
               {showCustomOption && (
                 <button
                   type="button"
                   onClick={() => select(search.trim())}
-                  className="w-full flex items-center gap-3 px-4 py-3 text-sm text-blue-400 hover:bg-blue-500/10 transition-colors border-b border-zinc-800/60"
+                  className="w-full flex items-center gap-3 px-4 py-3 text-sm text-blue-400 hover:bg-blue-500/10 transition-colors border-b border-zinc-800/60 "
                 >
                   <Plus className="w-3.5 h-3.5 shrink-0" />
                   <span>
@@ -349,7 +332,7 @@ function CityDropdown({
                   key={city}
                   type="button"
                   onClick={() => select(city)}
-                  className={`w-full flex items-center justify-between px-4 py-2.5 text-sm transition-colors ${
+                  className={`w-full flex items-center justify-between px-4 py-2.5 text-sm transition-colors cursor-pointer ${
                     value === city
                       ? "bg-zinc-800 text-white"
                       : "text-zinc-300 hover:bg-zinc-800/50 hover:text-white"
@@ -370,7 +353,6 @@ function CityDropdown({
 }
 
 // ─── Race Distance Section ────────────────────────────────────────────────────
-// Pills for distance selection, then time input rows below for each selected one.
 
 function RaceDistanceSection({
   disc,
@@ -401,14 +383,14 @@ function RaceDistanceSection({
         {formatEnum(disc)}
       </div>
 
-      {/* Distance pill buttons */}
+      {/* Distance pills */}
       <div className="flex flex-wrap gap-2">
         {distances.map((distance) => {
           const entry = raceEntries.find(
             (r) => r.discipline === disc && r.distance === distance,
           );
           const selected = !!entry;
-          const valid = selected && mmssToSeconds(entry!.mmss) > 0;
+          const valid = selected && timeToSeconds(entry!.mmss) > 0;
 
           return (
             <button
@@ -436,11 +418,13 @@ function RaceDistanceSection({
         })}
       </div>
 
-      {/* Time input rows — one per selected distance */}
+      {/* Time input rows */}
       <div className="space-y-2">
         <AnimatePresence>
           {selectedEntries.map((entry) => {
-            const valid = mmssToSeconds(entry.mmss) > 0;
+            const isLong = needsHourFormat(disc, entry.distance);
+            const valid = timeToSeconds(entry.mmss) > 0;
+
             return (
               <motion.div
                 key={entry.distance}
@@ -453,7 +437,6 @@ function RaceDistanceSection({
                 <div
                   className={`flex items-center gap-3 bg-zinc-900/70 border ${style.border} rounded-xl px-4 py-3`}
                 >
-                  {/* Label */}
                   <div className="flex items-center gap-2 flex-1 min-w-0">
                     <DiscIcon
                       disc={disc}
@@ -464,19 +447,18 @@ function RaceDistanceSection({
                     </span>
                   </div>
 
-                  {/* MM:SS input */}
                   <div className="relative shrink-0">
                     <input
                       type="text"
-                      placeholder="MM:SS"
+                      placeholder={isLong ? "H:MM:SS" : "MM:SS"}
                       value={entry.mmss}
-                      maxLength={5}
+                      maxLength={isLong ? 8 : 5}
                       onChange={(e) => {
-                        let val = e.target.value.replace(/[^0-9:]/g, "");
-                        if (val.length === 2 && !val.includes(":")) val += ":";
-                        onTimeChange(disc, entry.distance, val);
+                        const raw = e.target.value.replace(/[^0-9:]/g, "");
+                        const withColon = autoColon(raw, entry.mmss, isLong);
+                        onTimeChange(disc, entry.distance, withColon);
                       }}
-                      className={`w-24 bg-black border rounded-xl px-3 py-2 text-white placeholder:text-zinc-700 outline-none text-center font-black text-base tracking-widest transition-all focus:border-blue-500 ${
+                      className={`w-28 bg-black border rounded-xl px-3 py-2 text-white placeholder:text-zinc-700 outline-none text-center font-black text-base tracking-widest transition-all focus:border-blue-500 ${
                         valid ? "border-zinc-600" : "border-zinc-800"
                       }`}
                     />
@@ -605,11 +587,13 @@ export default function ProfileSetup() {
       case 2:
         return form.disciplines.length > 0;
       case 3:
+        // Every selected discipline must have ≥1 entry, and every entry must
+        // have a valid time. timeToSeconds handles both MM:SS and H:MM:SS.
         return form.disciplines.every((disc) => {
           const entries = form.raceEntries.filter((r) => r.discipline === disc);
           if (entries.length === 0) return false;
           return entries.every(
-            (r) => !isNaN(mmssToSeconds(r.mmss)) && mmssToSeconds(r.mmss) > 0,
+            (r) => !isNaN(timeToSeconds(r.mmss)) && timeToSeconds(r.mmss) > 0,
           );
         });
       case 4:
@@ -621,11 +605,12 @@ export default function ProfileSetup() {
 
   const onComplete = () => {
     if (!form.experienceLevel) return;
+
     const raceResults: RaceResultInput[] = form.raceEntries
       .map((r) => ({
         discipline: r.discipline,
         distance: r.distance,
-        timeSeconds: mmssToSeconds(r.mmss),
+        timeSeconds: timeToSeconds(r.mmss),
       }))
       .filter((r) => !isNaN(r.timeSeconds) && r.timeSeconds > 0);
 
@@ -664,7 +649,7 @@ export default function ProfileSetup() {
       <div className="fixed bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-cyan-500/5 rounded-full blur-[150px] pointer-events-none" />
 
       <div className="relative w-full max-w-xl bg-zinc-950 border border-zinc-800/80 rounded-4xl p-6 sm:p-10 shadow-2xl overflow-visible flex flex-col min-h-140 sm:min-h-155">
-        {/* Progress Bar */}
+        {/* Progress Bar — shown on steps 1–5, hidden on step 6 (summary) */}
         {step < TOTAL_STEPS && (
           <div className="mb-8 relative z-10">
             <div className="flex justify-between items-end mb-2">
@@ -677,7 +662,7 @@ export default function ProfileSetup() {
             </div>
             <div className="h-1.5 w-full bg-zinc-900 rounded-full overflow-hidden">
               <motion.div
-                className="h-full bg-gradient-to-r from-blue-500 to-cyan-400"
+                className="h-full bg-linear-to-r from-blue-500 to-cyan-400"
                 initial={{ width: 0 }}
                 animate={{ width: `${(step / 5) * 100}%` }}
                 transition={{ type: "spring", stiffness: 100, damping: 20 }}
@@ -697,7 +682,7 @@ export default function ProfileSetup() {
               exit="exit"
               className="w-full flex flex-col"
             >
-              {/* ── Step 1 ── */}
+              {/* ── Step 1: Identity ── */}
               {step === 1 && (
                 <div className="space-y-6">
                   <div>
@@ -725,7 +710,7 @@ export default function ProfileSetup() {
                       />
                     </div>
 
-                    <div className="space-y-2">
+                    <div className="space-y-2 relative z-100">
                       <label className="text-[11px] font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-2">
                         <MapPin className="w-3.5 h-3.5" /> Location (City)
                       </label>
@@ -742,7 +727,7 @@ export default function ProfileSetup() {
                 </div>
               )}
 
-              {/* ── Step 2 ── */}
+              {/* ── Step 2: Disciplines ── */}
               {step === 2 && (
                 <div className="space-y-6 flex flex-col h-full">
                   <div>
@@ -804,7 +789,7 @@ export default function ProfileSetup() {
                 </div>
               )}
 
-              {/* ── Step 3 ── */}
+              {/* ── Step 3: Race Times ── */}
               {step === 3 && (
                 <div className="space-y-5 flex flex-col h-full">
                   <div>
@@ -812,9 +797,11 @@ export default function ProfileSetup() {
                       Race Times
                     </h2>
                     <p className="text-zinc-400 text-sm">
-                      Tap distances to select, then enter your best time in{" "}
-                      <span className="text-white font-bold">MM:SS</span>. At
-                      least one per discipline.
+                      Tap a distance to select it, then enter your best time.
+                      Short events use{" "}
+                      <span className="text-white font-bold">MM:SS</span>,
+                      longer events use{" "}
+                      <span className="text-white font-bold">H:MM:SS</span>.
                     </p>
                   </div>
 
@@ -835,7 +822,7 @@ export default function ProfileSetup() {
                 </div>
               )}
 
-              {/* ── Step 4 ── */}
+              {/* ── Step 4: Experience Level ── */}
               {step === 4 && (
                 <div className="space-y-6 flex flex-col h-full">
                   <div>
@@ -890,7 +877,7 @@ export default function ProfileSetup() {
                 </div>
               )}
 
-              {/* ── Step 5 ── */}
+              {/* ── Step 5: Achievements ── */}
               {step === 5 && (
                 <div className="space-y-5 flex flex-col h-full">
                   <div>
@@ -1082,7 +1069,7 @@ export default function ProfileSetup() {
         </div>
 
         {/* Navigation */}
-        <div className="mt-8 pt-6 border-t border-zinc-900 flex items-center justify-between relative z-10">
+        <div className="mt-8 pt-6 border-t border-zinc-900 flex items-center justify-between relative z-0">
           {step > 1 ? (
             <button
               onClick={handleBack}

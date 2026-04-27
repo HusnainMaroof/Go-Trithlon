@@ -4,13 +4,7 @@ import { getCurrentUser } from "../lib/auth";
 import { prisma } from "../lib/prisma";
 import setRedis from "../lib/redis";
 import { addAthleteToPool } from "../service/getData.service";
-import {
-  claimSlotService,
-  createTeamService,
-  deleteTeamService,
-  getTeamService,
-  removeFromTeamService,
-} from "../service/team.service";
+
 import {
   acceptInvitePayload,
   sendInvitesPayload,
@@ -29,67 +23,6 @@ export type ActionResponse<T = any> = {
 
 
 
-export const teamAction = catchErrors(
-  async (
-    _prevState: ActionResponse,
-    payload: TeamActionPayload,
-  ): Promise<ActionResponse> => {
-    if (!payload?.service) {
-      return {
-        success: false,
-        error: true,
-        message: "No service specified.",
-        data: null,
-      };
-    }
-
-    const getUser = await getCurrentUser();
-    const sessionId = getUser.authsuccess.data.sessionId;
-
-    const userData = await getAuthSession({ sessionId });
-
-    if (!userData?.data) {
-      return {
-        success: false,
-        error: true,
-        message: "No session data",
-        data: null,
-      };
-    }
-
-    const userId = userData.data.userId;
-
-    // console.log("payloafkakjdjnvojd", userData?.data?.athleteData);
-
-    switch (payload.service) {
-      case "GET_TEAM":
-        return getTeamService(userId);
-
-      case "CREATE_TEAM":
-        return createTeamService(userId, payload.teamName);
-
-      case "CLAIM_SLOT":
-        return claimSlotService(
-          userId,
-          payload.teamId,
-          payload.role,
-          userData?.data?.athleteData,
-        );
-
-      case "REMOVE_FROM_TEAM":
-        return removeFromTeamService(userId, payload.memberId, payload.teamId);
-      case "DELETE_TEAM": // Handle deletion
-        return await deleteTeamService(userId, payload.teamId);
-      default:
-        return {
-          success: false,
-          error: true,
-          message: "Unknown service.",
-          data: null,
-        };
-    }
-  },
-);
 
 export const getAthleteDataAction = catchErrors(
   async (
