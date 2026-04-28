@@ -19,11 +19,11 @@ import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { useStateContext } from "../context/useContext";
+import { logoutAction } from "../actions/logoutAction";
 import Logout from "./Logout";
-import { inviteAction } from "../actions/InviteAction"; // Ensure this path is correct
+import { inviteAction } from "../actions/InviteAction"; // Make sure this path is correct
 
 // ─── POLLING HOOK ──────────────────────────────────────────────────────────────
-// Silently fetches invites in the background every X milliseconds
 function useInvitePolling(intervalMs = 15000) {
   const [pendingCount, setPendingCount] = useState(0);
 
@@ -34,13 +34,15 @@ function useInvitePolling(intervalMs = 15000) {
       try {
         const response = await inviteAction(
           { success: false, error: false, message: null, data: null },
-          { service: "GET_INVITES" }
+          { service: "GET_INVITES" },
         );
 
         if (isMounted && response.success && response.data) {
           const received = response.data.received || [];
-          // 🚨 UPDATE THIS LINE: Only count unread pending invites
-          const count = received.filter((inv: any) => inv.status === "PENDING" && inv.isRead === false).length;
+          // Only count invites that are PENDING and haven't been read yet
+          const count = received.filter(
+            (inv: any) => inv.status === "PENDING" && inv.isRead === false,
+          ).length;
           setPendingCount(count);
         }
       } catch (error) {
@@ -60,7 +62,7 @@ function useInvitePolling(intervalMs = 15000) {
   return pendingCount;
 }
 
-// ─── PROFILE AVATAR ────────────────────────────────────────────────────────────
+// ─── Profile Avatar ────────────────────────────────────────────────────────────
 const ProfileAvatar = ({
   src,
   alt,
@@ -81,7 +83,7 @@ const ProfileAvatar = ({
   if (!src || imgError) {
     return (
       <div
-        className={`${sizeClass} rounded-full bg-gradient-to-b from-zinc-800 to-zinc-900 ${borderClass} flex items-center justify-center shadow-inner shrink-0 overflow-hidden relative`}
+        className={`${sizeClass} rounded-full bg-linear-to-b from-zinc-800 to-zinc-900 ${borderClass} flex items-center justify-center shadow-inner shrink-0 overflow-hidden relative`}
       >
         <User className="w-[45%] h-[45%] text-zinc-500" />
       </div>
@@ -104,7 +106,7 @@ const ProfileAvatar = ({
   );
 };
 
-// ─── NAV ITEM ──────────────────────────────────────────────────────────────────
+// ─── Nav Item ──────────────────────────────────────────────────────────────────
 const NavItem = ({
   href,
   label,
@@ -116,18 +118,18 @@ const NavItem = ({
   isActive: boolean;
   onClick?: () => void;
 }) => (
-  <Link href={href} onClick={onClick} className="relative block">
+  <Link href={href} onClick={onClick}>
     <button
-      className={`relative w-full px-5 py-2 rounded-full text-[14px] font-semibold   transition-all duration-300 border cursor-pointer text-center ${
+      className={`relative px-4 py-1.5 rounded-full text-sm font-bold transition-all duration-200 border cursor-pointer ${
         isActive
-          ? "bg-zinc-800 text-white border-zinc-700 shadow-md"
-          : "text-zinc-500 hover:text-white hover:bg-zinc-900/50 border-transparent"
+          ? "bg-zinc-800 text-white border-zinc-700 shadow-sm"
+          : "text-zinc-400 hover:text-white hover:bg-zinc-900 border-transparent"
       }`}
     >
       {isActive && (
         <motion.span
           layoutId="nav-active-pill"
-          className="absolute inset-0 rounded-full bg-zinc-800 border border-zinc-700 -z-10 shadow-[0_0_15px_rgba(255,255,255,0.05)]"
+          className="absolute inset-0 rounded-full bg-zinc-800 border border-zinc-700 -z-10"
           transition={{ type: "spring", stiffness: 400, damping: 30 }}
         />
       )}
@@ -136,7 +138,7 @@ const NavItem = ({
   </Link>
 );
 
-// ─── NAVBAR ────────────────────────────────────────────────────────────────────
+// ─── NavBar ────────────────────────────────────────────────────────────────────
 const NavBar = () => {
   const { user, setShowLoginPopup } = useStateContext();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -147,13 +149,14 @@ const NavBar = () => {
 
   const isLoggedIn = Boolean(user?.userToken);
 
-  // Start polling for invites (every 15 seconds)
+  // Poll for invites
   const pendingInviteCount = useInvitePolling(15000);
 
   const navLinks = [
     { id: "dashboard", label: "Dashboard", href: "/dashboard/home" },
     { id: "athletes", label: "Athletes", href: "/dashboard/athletes" },
     { id: "my-team", label: "My Team", href: "/dashboard/myteam" },
+    { id: "invites", label: "My Invites", href: "/dashboard/invites" },
   ];
 
   useEffect(() => {
@@ -193,21 +196,21 @@ const NavBar = () => {
 
   return (
     <>
-      <nav className="sticky top-0 z-50 bg-[#050505]/90 backdrop-blur-xl border-b border-zinc-800/80 shadow-2xl">
+      <nav className="sticky top-0 z-50 bg-zinc-950/80 backdrop-blur-md border-b border-zinc-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-20">
+          <div className="flex items-center justify-between h-16">
             {/* ── Logo ── */}
             <button
               onClick={() => router.push("/")}
               className="flex items-center gap-3 cursor-pointer group bg-transparent border-none outline-none"
             >
-              <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-blue-500/10 to-cyan-400/10 border border-blue-500/20 flex items-center justify-center shadow-inner group-hover:border-blue-500/50 group-hover:bg-blue-500/20 transition-all duration-300">
+              <div className="w-10 h-10 rounded-xl bg-linear-to-br from-blue-500/10 to-cyan-400/10 border border-blue-500/20 flex items-center justify-center shadow-inner group-hover:border-blue-500/40 group-hover:shadow-blue-500/20 transition-all duration-300">
                 <Zap
                   className="text-blue-400 w-5 h-5 group-hover:scale-110 transition-transform duration-300"
                   fill="currentColor"
                 />
               </div>
-              <span className="font-black text-xl tracking-tight text-white group-hover:text-blue-400 transition-colors">
+              <span className="font-semibold text-xl tracking-tight text-white group-hover:text-blue-400 transition-colors">
                 TriMatch
               </span>
             </button>
@@ -215,7 +218,7 @@ const NavBar = () => {
             {/* ── Desktop Nav ── */}
             {isLoggedIn && user?.isOnboard && (
               <div className="hidden md:block">
-                <div className="flex items-center space-x-1 border border-zinc-800/80 rounded-full p-1.5 bg-[#0a0a0a] shadow-inner">
+                <div className="flex items-center space-x-1 border border-zinc-800 rounded-full p-1 bg-zinc-950 shadow-inner">
                   {navLinks.map((tab) => (
                     <NavItem
                       key={tab.id}
@@ -229,13 +232,13 @@ const NavBar = () => {
             )}
 
             {/* ── Right Side ── */}
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
               {isLoggedIn ? (
                 <>
-                  {/* Notification Bell with Badge */}
+                  {/* Notification Bell */}
                   {user?.isOnboard && (
                     <Link href="/dashboard/invites">
-                      <button className="relative p-2.5 rounded-full bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-600 transition-all cursor-pointer">
+                      <button className="relative p-2 rounded-full border border-transparent text-zinc-400 hover:text-white hover:bg-zinc-900 transition-all cursor-pointer mr-1">
                         <Bell className="w-5 h-5" />
                         <AnimatePresence>
                           {pendingInviteCount > 0 && (
@@ -243,7 +246,7 @@ const NavBar = () => {
                               initial={{ scale: 0 }}
                               animate={{ scale: 1 }}
                               exit={{ scale: 0 }}
-                              className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 border-2 border-[#050505] text-[10px] font-black text-white shadow-lg"
+                              className="absolute top-0 right-0 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 border-2 border-zinc-950 text-[9px] font-bold text-white shadow-sm"
                             >
                               {pendingInviteCount}
                             </motion.span>
@@ -257,17 +260,17 @@ const NavBar = () => {
                   <div className="hidden md:block relative" ref={dropdownRef}>
                     <button
                       onClick={() => setDropdownOpen((prev) => !prev)}
-                      className={`flex items-center gap-4 bg-[#0a0a0a] border rounded-full pl-5 pr-2.5 py-1.5 shadow-lg transition-all cursor-pointer group ${
+                      className={`flex items-center gap-3 bg-zinc-950 border rounded-full pl-4 pr-2 py-1.5 shadow-sm transition-all cursor-pointer group ${
                         dropdownOpen
                           ? "border-zinc-600 bg-zinc-900"
                           : "border-zinc-800 hover:border-zinc-700 hover:bg-zinc-900/50"
                       }`}
                     >
                       <div className="flex flex-col items-end">
-                        <span className="text-[13px] font-black text-white leading-tight">
+                        <span className="text-sm font-bold text-white leading-tight">
                           {user?.displayName || "Athlete"}
                         </span>
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-blue-400 flex items-center gap-1">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-blue-400 flex items-center gap-1">
                           <Activity className="w-3 h-3" />
                           {user?.athleteData?.disciplines?.join(", ") ||
                             "In Training"}
@@ -278,18 +281,18 @@ const NavBar = () => {
                         <div
                           className={`absolute inset-0 rounded-full blur-md transition-opacity duration-300 ${
                             dropdownOpen
-                              ? "bg-blue-500/40 opacity-100"
-                              : "bg-blue-500/0 opacity-0 group-hover:opacity-50"
+                              ? "bg-blue-500/30 opacity-100"
+                              : "bg-blue-500/0 opacity-0 group-hover:opacity-40"
                           }`}
                         />
                         <ProfileAvatar
                           src={user?.profileImage}
                           alt={user?.displayName || "User"}
-                          sizeClass="w-10 h-10"
-                          borderClass={`border-2 transition-colors duration-300 relative z-10 ${
+                          sizeClass="w-9 h-9"
+                          borderClass={`border transition-colors duration-300 relative z-10 ${
                             dropdownOpen
-                              ? "border-zinc-400"
-                              : "border-zinc-700 group-hover:border-zinc-500"
+                              ? "border-zinc-500"
+                              : "border-zinc-700 group-hover:border-zinc-600"
                           }`}
                         />
                       </div>
@@ -311,10 +314,11 @@ const NavBar = () => {
                           initial="hidden"
                           animate="visible"
                           exit="exit"
-                          className="absolute right-0 mt-3 w-64 bg-zinc-950/95 backdrop-blur-2xl border border-zinc-800 rounded-3xl shadow-[0_30px_60px_rgba(0,0,0,0.8)] overflow-hidden py-2 z-50 origin-top-right"
+                          className="absolute right-0 mt-3 w-60 bg-zinc-950/95 backdrop-blur-xl border border-zinc-800 rounded-2xl shadow-2xl shadow-black/50 overflow-hidden py-2 z-50 origin-top-right"
                         >
-                          <div className="px-5 py-3 border-b border-zinc-800/80 mb-2">
-                            <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-0.5">
+                          {/* Signed-in header */}
+                          <div className="px-4 py-2.5 border-b border-zinc-800/60 mb-1">
+                            <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-0.5">
                               Signed in as
                             </p>
                             <p className="text-sm font-medium text-zinc-300 truncate">
@@ -322,16 +326,16 @@ const NavBar = () => {
                             </p>
                           </div>
 
-                          <div className="px-2 py-1 space-y-1">
+                          <div className="px-2 py-1 space-y-0.5">
                             <Link
                               href={`/dashboard/athletes/athletesprofile/${user?.sessionId}`}
                               onClick={() => setDropdownOpen(false)}
                             >
-                              <button className="group flex items-center gap-3 w-full px-3 py-3 text-sm font-bold text-zinc-400 hover:text-white hover:bg-zinc-900 rounded-2xl transition-all cursor-pointer">
-                                <div className="w-8 h-8 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center group-hover:bg-blue-500/10 group-hover:border-blue-500/30 transition-colors">
-                                  <User className="w-4 h-4 group-hover:text-blue-400 transition-colors" />
-                                </div>
-                                <span>View Profile</span>
+                              <button className="group flex items-center gap-3 w-full px-3 py-2.5 text-sm font-bold text-zinc-300 hover:text-white hover:bg-zinc-900 rounded-xl transition-all cursor-pointer">
+                                <User className="w-4 h-4 text-zinc-400 group-hover:text-blue-400 transition-colors" />
+                                <span className="transform transition-transform duration-200 group-hover:translate-x-1">
+                                  View Profile
+                                </span>
                               </button>
                             </Link>
 
@@ -339,28 +343,33 @@ const NavBar = () => {
                               href="/dashboard/invites"
                               onClick={() => setDropdownOpen(false)}
                             >
-                              <button className="group flex items-center gap-3 w-full px-3 py-3 text-sm font-bold text-zinc-400 hover:text-white hover:bg-zinc-900 rounded-2xl transition-all cursor-pointer">
-                                <div className="relative w-8 h-8 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center group-hover:bg-emerald-500/10 group-hover:border-emerald-500/30 transition-colors">
-                                  <Mail className="w-4 h-4 group-hover:text-emerald-400 transition-colors" />
-                                  {pendingInviteCount > 0 && (
-                                    <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-zinc-950" />
-                                  )}
+                              <button className="group flex items-center justify-between w-full px-3 py-2.5 text-sm font-bold text-zinc-300 hover:text-white hover:bg-zinc-900 rounded-xl transition-all cursor-pointer">
+                                <div className="flex items-center gap-3">
+                                  <Mail className="w-4 h-4 text-zinc-400 group-hover:text-blue-400 transition-colors" />
+                                  <span className="transform transition-transform duration-200 group-hover:translate-x-1">
+                                    My Invites
+                                  </span>
                                 </div>
-                                <span>My Invites</span>
+                                {pendingInviteCount > 0 && (
+                                  <span className="bg-red-500 text-white text-[9px] px-2 py-0.5 rounded-md">
+                                    {pendingInviteCount}
+                                  </span>
+                                )}
                               </button>
                             </Link>
 
-                            <button className="group flex items-center gap-3 w-full px-3 py-3 text-sm font-bold text-zinc-400 hover:text-white hover:bg-zinc-900 rounded-2xl transition-all cursor-pointer">
-                              <div className="w-8 h-8 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center group-hover:bg-amber-500/10 group-hover:border-amber-500/30 transition-colors">
-                                <Settings className="w-4 h-4 group-hover:text-amber-400 transition-colors" />
-                              </div>
-                              <span>Account Settings</span>
+                            <button className="group flex items-center gap-3 w-full px-3 py-2.5 text-sm font-bold text-zinc-300 hover:text-white hover:bg-zinc-900 rounded-xl transition-all cursor-pointer">
+                              <Settings className="w-4 h-4 text-zinc-400 group-hover:text-zinc-200 transition-colors" />
+                              <span className="transform transition-transform duration-200 group-hover:translate-x-1">
+                                Account Settings
+                              </span>
                             </button>
                           </div>
 
-                          <div className="h-px bg-zinc-800/80 my-2 mx-4" />
+                          <div className="h-px bg-zinc-800/60 my-1 mx-2" />
 
-                          <div className="px-3 pb-1">
+                          {/* ── Desktop Sign Out ── */}
+                          <div className="px-2 py-1">
                             <Logout />
                           </div>
                         </motion.div>
@@ -372,7 +381,7 @@ const NavBar = () => {
                   <div className="md:hidden flex items-center">
                     <button
                       onClick={() => setMobileMenuOpen((prev) => !prev)}
-                      className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-900 rounded-xl transition-colors cursor-pointer border border-transparent hover:border-zinc-800"
+                      className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-900 rounded-full transition-colors cursor-pointer"
                     >
                       <AnimatePresence mode="wait" initial={false}>
                         <motion.div
@@ -395,7 +404,7 @@ const NavBar = () => {
               ) : (
                 <button
                   onClick={() => setShowLoginPopup(true)}
-                  className="px-6 py-2.5 md:px-8 md:py-3 rounded-full font-black text-xs uppercase tracking-widest transition-all bg-white hover:bg-zinc-200 border border-white text-black shadow-[0_0_20px_rgba(255,255,255,0.2)] whitespace-nowrap cursor-pointer active:scale-95"
+                  className="px-6 py-2 md:px-6 md:py-2.5 rounded-xl font-bold text-sm transition-all bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 text-zinc-200 hover:text-white shadow-sm whitespace-nowrap cursor-pointer"
                 >
                   Sign In
                 </button>
@@ -413,77 +422,68 @@ const NavBar = () => {
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-            className="md:hidden bg-zinc-950 border-b border-zinc-800/80 overflow-hidden shadow-2xl relative z-40"
+            className="md:hidden bg-zinc-950 border-b border-zinc-800 overflow-hidden shadow-2xl"
           >
-            <div className="px-5 py-6 space-y-6">
+            <div className="px-4 py-5 space-y-5">
               {/* Mobile Profile Header */}
-              <div className="flex items-center gap-5 pb-6 border-b border-zinc-800/80">
+              <div className="flex items-center gap-4 pb-5 border-b border-zinc-800/60">
                 <ProfileAvatar
                   src={user?.profileImage}
                   alt={user?.displayName || "User"}
-                  sizeClass="w-16 h-16"
-                  borderClass="border-2 border-zinc-700 shadow-xl"
+                  sizeClass="w-14 h-14"
+                  borderClass="border-2 border-zinc-700"
                 />
                 <div>
-                  <div className="font-black text-white text-xl tracking-tight leading-none">
+                  <div className="font-bold text-white text-lg">
                     {user?.displayName || "Athlete"}
                   </div>
-                  <div className="text-xs font-bold text-zinc-500 mt-1">
-                    {user?.email}
-                  </div>
+                  <div className="text-sm text-zinc-400">{user?.email}</div>
                 </div>
               </div>
 
               {user?.isOnboard && (
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   {navLinks.map((tab) => {
                     const isActive = Boolean(pathname?.startsWith(tab.href));
                     return (
                       <Link key={tab.id} href={tab.href}>
                         <button
-                          className={`block w-full text-left px-5 py-4 rounded-2xl text-sm font-black uppercase tracking-widest transition-colors border cursor-pointer ${
+                          className={`block w-full text-left px-4 py-3.5 rounded-xl text-base font-bold transition-colors border cursor-pointer flex items-center justify-between ${
                             isActive
                               ? "bg-zinc-900 text-white border-zinc-800 shadow-sm"
-                              : "text-zinc-500 hover:bg-zinc-900/50 hover:text-white border-transparent"
+                              : "text-zinc-400 hover:bg-zinc-900/50 hover:text-white border-transparent"
                           }`}
                         >
-                          {tab.label}
+                          <span>{tab.label}</span>
+                          {/* Render badge on mobile nav if it's the invites tab */}
+                          {tab.id === "invites" && pendingInviteCount > 0 && (
+                            <span className="bg-red-500 text-white text-[10px] font-black px-2 py-0.5 rounded-md">
+                              {pendingInviteCount} NEW
+                            </span>
+                          )}
                         </button>
                       </Link>
                     );
                   })}
 
-                  <div className="h-px bg-zinc-800/80 my-4 w-full" />
+                  <div className="h-px bg-zinc-800/60 my-3 w-full" />
 
                   <Link
                     href={`/dashboard/athletes/athletesprofile/${user?.sessionId}`}
                   >
-                    <button className="flex items-center gap-4 w-full text-left px-5 py-4 rounded-2xl text-sm font-bold text-zinc-400 hover:text-white hover:bg-zinc-900/50 border border-transparent transition-colors cursor-pointer">
-                      <User className="w-5 h-5 text-zinc-500" /> View Profile
+                    <button className="flex items-center gap-3 w-full text-left px-4 py-3.5 rounded-xl text-base font-bold text-zinc-400 hover:text-white hover:bg-zinc-900/50 border border-transparent transition-colors cursor-pointer">
+                      <User className="w-5 h-5 text-zinc-500" />
+                      View Profile
                     </button>
                   </Link>
 
-                  <Link href="/dashboard/invites">
-                    <button className="flex items-center justify-between w-full text-left px-5 py-4 rounded-2xl text-sm font-bold text-zinc-400 hover:text-white hover:bg-zinc-900/50 border border-transparent transition-colors cursor-pointer">
-                      <div className="flex items-center gap-4">
-                        <Mail className="w-5 h-5 text-zinc-500" /> My Invites
-                      </div>
-                      {pendingInviteCount > 0 && (
-                        <span className="bg-red-500 text-white text-[10px] font-black px-2.5 py-1 rounded-lg">
-                          {pendingInviteCount} NEW
-                        </span>
-                      )}
-                    </button>
-                  </Link>
-
-                  <button className="flex items-center gap-4 w-full text-left px-5 py-4 rounded-2xl text-sm font-bold text-zinc-400 hover:text-white hover:bg-zinc-900/50 border border-transparent transition-colors cursor-pointer">
-                    <Settings className="w-5 h-5 text-zinc-500" /> Account
-                    Settings
+                  <button className="flex items-center gap-3 w-full text-left px-4 py-3.5 rounded-xl text-base font-bold text-zinc-400 hover:text-white hover:bg-zinc-900/50 border border-transparent transition-colors cursor-pointer">
+                    <Settings className="w-5 h-5 text-zinc-500" />
+                    Account Settings
                   </button>
 
-                  <div className="pt-2">
-                    <Logout />
-                  </div>
+                  {/* ── Mobile Sign Out ── */}
+                  <Logout />
                 </div>
               )}
             </div>
