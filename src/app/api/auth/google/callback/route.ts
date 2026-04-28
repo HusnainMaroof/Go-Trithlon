@@ -88,8 +88,12 @@ export async function GET(req: Request) {
     // =========================
     // 5. FETCH EXTRA DATA
     // =========================
-    const athleteData = await prisma.athleteProfile.findUnique({
+  const athleteData = await prisma.athleteProfile.findUnique({
       where: { userId: dbUser.id },
+      include: {
+        raceResults: true,    // ← ADDED THIS
+        achievements: true,   // ← ADDED THIS
+      },
     });
     // =========================
     // 6. CREATE SESSION (REDIS)

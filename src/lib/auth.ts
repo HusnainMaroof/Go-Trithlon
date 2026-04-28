@@ -34,6 +34,7 @@ export const getCurrentUser = async (): Promise<AuthPayload> => {
       success: true,
       authMessage: "auth",
       data: {
+        inTeam:parsed.inTeam,
         userId: parsed.userId,
         sessionId: auth_sessionId,
         email: parsed?.email!,

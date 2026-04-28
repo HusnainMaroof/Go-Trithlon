@@ -31,8 +31,6 @@ import {
   Trash2,
   Check,
 } from "lucide-react";
-import { useStateContext } from "../context/useContext";
-import { teamAction } from "../actions/dashboardAction";
 export const modalVariants = {
   hidden: { opacity: 0, scale: 0.95, y: 20 },
   visible: {

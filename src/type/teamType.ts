@@ -73,7 +73,7 @@ export interface TeamMember {
 
 export interface Team {
   id: string;
-  name: string;
+  name: string | null;
   ownerId: string;
   status: "OPEN" | "COMPLETE";
   createdAt: string;
@@ -152,3 +152,5 @@ export type RosterEntry = {
   hasSkill: boolean;
   img: string | null;
 };
+
+

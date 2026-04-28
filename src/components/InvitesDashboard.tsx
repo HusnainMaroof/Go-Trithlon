@@ -735,6 +735,20 @@ export default function InvitesDashboard() {
     },
   ];
 
+
+useEffect(() => {
+    // As soon as they open the invites page, mark everything as read
+    const clearNotifications = async () => {
+      await inviteAction(
+        { success: false, error: false, message: null, data: null },
+        { service: "MARK_AS_READ" }
+      );
+    };
+    
+    clearNotifications();
+  }, []);
+
+
   if (isPending && !state.data) {
     return (
       <div className="pt-5">

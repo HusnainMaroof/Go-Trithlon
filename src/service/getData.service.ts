@@ -1,4 +1,5 @@
 import setRedis from "../lib/redis";
+import { AchievementInput } from "../type/ProfileType";
 
 export const addAthleteToPool = async (
   userId: string,
@@ -39,7 +40,11 @@ export const addAthleteToPool = async (
 
 export const updateAthleteInPool = async (
   userId: string,
-  patch: Partial<{ inTeam: boolean; profileImage: string }>,
+  patch: Partial<{ 
+    inTeam: boolean; 
+    profileImage: string;
+    achievements: (AchievementInput & { id?: string })[]; 
+  }>,
 ): Promise<void> => {
   const key = `athletes:user:${userId}`;
   const cached = await setRedis.get(key);

@@ -270,7 +270,10 @@ export const inviteService = {
           }),
           prisma.athleteProfile.findUnique({
             where: { userId: payload.toUserId },
-            select: { disciplines: true },
+            select: {
+              disciplines: true,
+              user: { select: { inTeam: true } }, // Fetch inTeam status for extra safety
+            },
           }),
           prisma.teamInvite.findUnique({
             where: {
@@ -311,25 +314,28 @@ export const inviteService = {
         };
       }
 
-      // Block re-send only for PENDING or ACCEPTED — those are still active.
-      // REJECTED and REVOKED are fine to resend; the upsert below handles them.
-      if (
-        existingInvite &&
-        !["REJECTED", "REVOKED"].includes(existingInvite.status)
-      ) {
+      // PREVENT INVITING SOMEONE ALREADY IN A TEAM
+      if (receiverProfile.user.inTeam) {
         return {
           success: false,
           error: true,
-          message: "An active invite already exists",
+          message: "This athlete is already in a team",
+          data: null,
+        };
+      }
+
+      // Only block if the invite is actively PENDING
+      if (existingInvite && existingInvite.status === "PENDING") {
+        return {
+          success: false,
+          error: true,
+          message: "A pending invite already exists for this slot",
           data: null,
         };
       }
 
       // ── UPSERT ────────────────────────────────────────────────────────────
-      // The unique constraint is (teamId, toUserId, role).
-      // prisma.create crashes if a REJECTED or REVOKED row already exists for
-      // this combination. Upsert resets the existing row to PENDING instead
-      // of trying to insert a duplicate.
+      // If it was ACCEPTED, REJECTED, or REVOKED, this resets it back to PENDING.
       await prisma.teamInvite.upsert({
         where: {
           teamId_toUserId_role: {
@@ -338,13 +344,11 @@ export const inviteService = {
             role: payload.role,
           },
         },
-        // Existing row (REJECTED or REVOKED) — reset to PENDING
         update: {
           status: "PENDING",
           fromUserId,
           updatedAt: new Date(),
         },
-        // No prior row — create fresh
         create: {
           teamId: team.id,
           fromUserId,
@@ -356,9 +360,7 @@ export const inviteService = {
       await bustCache(
         cacheKey.receivedPending(payload.toUserId),
         cacheKey.sentPending(fromUserId),
-        // Bust sentDeclined — the previously declined invite is now PENDING
-        // again so it must not appear in the declined tab anymore
-        cacheKey.sentDeclined(fromUserId),
+        cacheKey.sentDeclined(fromUserId), // In case they previously rejected, clear the declined cache
       );
 
       return {
@@ -385,33 +387,46 @@ export const inviteService = {
     inviteId: string,
   ): Promise<ActionResponse> {
     try {
-      const invite = await prisma.teamInvite.findUnique({
-        where: { id: inviteId },
-      });
+      // Fetch both the invite AND the accepting user's current status
+      const [invite, acceptingUser] = await Promise.all([
+        prisma.teamInvite.findUnique({
+          where: { id: inviteId },
+        }),
+        prisma.user.findUnique({
+          where: { id: userId },
+          select: { inTeam: true },
+        }),
+      ]);
 
-      if (!invite) {
+      if (!invite)
         return {
           success: false,
           error: true,
           message: "Invite not found",
           data: null,
         };
-      }
-
-      if (invite.toUserId !== userId) {
+      if (invite.toUserId !== userId)
         return {
           success: false,
           error: true,
           message: "This invite is not for you",
           data: null,
         };
-      }
-
-      if (invite.status !== "PENDING") {
+      if (invite.status !== "PENDING")
         return {
           success: false,
           error: true,
           message: "Invite has already been handled",
+          data: null,
+        };
+
+      // 🚨 SECURITY CHECK: Prevent joining multiple teams
+      if (acceptingUser?.inTeam) {
+        return {
+          success: false,
+          error: true,
+          message:
+            "You are already in a team. You must leave it before accepting a new invite.",
           data: null,
         };
       }
@@ -420,14 +435,13 @@ export const inviteService = {
         where: { teamId_role: { teamId: invite.teamId, role: invite.role } },
       });
 
-      if (roleAlreadyFilled) {
+      if (roleAlreadyFilled)
         return {
           success: false,
           error: true,
           message: "This role has already been filled by someone else",
           data: null,
         };
-      }
 
       await prisma.$transaction([
         prisma.myTeamMember.create({
@@ -510,32 +524,27 @@ export const inviteService = {
         select: { id: true, toUserId: true, fromUserId: true, status: true },
       });
 
-      if (!invite) {
+      if (!invite)
         return {
           success: false,
           error: true,
           message: "Invite not found",
           data: null,
         };
-      }
-
-      if (invite.toUserId !== userId) {
+      if (invite.toUserId !== userId)
         return {
           success: false,
           error: true,
           message: "This invite is not for you",
           data: null,
         };
-      }
-
-      if (invite.status !== "PENDING") {
+      if (invite.status !== "PENDING")
         return {
           success: false,
           error: true,
           message: "Invite has already been handled",
           data: null,
         };
-      }
 
       await prisma.teamInvite.update({
         where: { id: invite.id },
@@ -578,32 +587,27 @@ export const inviteService = {
         select: { id: true, fromUserId: true, toUserId: true, status: true },
       });
 
-      if (!invite) {
+      if (!invite)
         return {
           success: false,
           error: true,
           message: "Invite not found",
           data: null,
         };
-      }
-
-      if (invite.fromUserId !== userId) {
+      if (invite.fromUserId !== userId)
         return {
           success: false,
           error: true,
           message: "You did not send this invite",
           data: null,
         };
-      }
-
-      if (invite.status !== "PENDING") {
+      if (invite.status !== "PENDING")
         return {
           success: false,
           error: true,
           message: "Invite has already been handled",
           data: null,
         };
-      }
 
       await prisma.teamInvite.update({
         where: { id: invite.id },
@@ -627,6 +631,38 @@ export const inviteService = {
         error: true,
         message:
           error instanceof Error ? error.message : "Failed to revoke invite",
+        data: null,
+      };
+    }
+  },
+
+  // ── MARK INVITES AS READ ───────────────────────────────────────────────────
+
+  async markAsRead(userId: string): Promise<ActionResponse> {
+    try {
+      await prisma.teamInvite.updateMany({
+        where: { 
+          toUserId: userId, 
+          status: "PENDING",
+          isRead: false // Only update ones that haven't been read
+        },
+        data: { isRead: true },
+      });
+
+      // Bust the cache so the next fetch gets the updated `isRead` statuses
+      await bustCache(cacheKey.receivedPending(userId));
+
+      return {
+        success: true,
+        error: false,
+        message: "Invites marked as read",
+        data: null,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: true,
+        message: "Failed to mark invites as read",
         data: null,
       };
     }

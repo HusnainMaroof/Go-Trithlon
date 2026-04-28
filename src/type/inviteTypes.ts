@@ -66,6 +66,7 @@ export type InvitesData = {
 
 export type InviteActionPayload =
   | { service: "GET_INVITES" }
+  | { service: "MARK_AS_READ" }
   | { service: "SEND_INVITE"; toUserId: string; role: Discipline }
   | { service: "ACCEPT_INVITE"; inviteId: string }
   | { service: "REJECT_INVITE"; inviteId: string }

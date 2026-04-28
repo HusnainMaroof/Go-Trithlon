@@ -70,7 +70,9 @@ export const inviteAction = catchErrors(
 
       case "REVOKE_INVITE":
         return await inviteService.revokeInvite(userId, payload.inviteId);
-
+// Inside inviteAction.ts
+      case "MARK_AS_READ":
+        return await inviteService.markAsRead(userId);
       default: {
         const _exhaustive: never = payload;
         return unknownService();

@@ -1,4 +1,5 @@
 "use server";
+
 import { getCurrentUser } from "../lib/auth";
 import { prisma } from "../lib/prisma";
 import setRedis from "../lib/redis";
@@ -27,7 +28,7 @@ function computeMatchScore(
 
   // Discipline relevance
   const candidateDisciplines: string[] = a.disciplines ?? [];
-  const relevantCount = candidateDisciplines.filter((d) =>
+  const relevantCount = candidateDisciplines.filter((d: string) =>
     missingDisciplines.includes(d as Discipline),
   ).length;
   score += relevantCount * 40;
@@ -71,14 +72,14 @@ function computeMatchScore(
   return Math.min(Math.round((score / MAX_RAW_SCORE) * 100), 100);
 }
 
-// ─── SUGGESTION FETCH ────────────────────────────────────────────────────────
+// ─── SUGGESTION FETCH (REWRITTEN FOR PRISMA) ─────────────────────────────────
 
 async function getSuggestedAthletes(
   userId: string,
   team: any | null,
   athleteData: any | null,
 ): Promise<any[]> {
-  // Determine which discipline slots are still open
+  // 1. Determine which discipline slots are still open
   const filledDisciplines = new Set<string>(
     (team?.members ?? []).map((m: any) => m.role),
   );
@@ -90,54 +91,46 @@ async function getSuggestedAthletes(
   // Team is full — no suggestions needed
   if (missingDisciplines.length === 0) return [];
 
-  // UserIds to exclude: self + current team members
-  const excludeIds = new Set<string>(
-    (team?.members ?? []).map((m: any) => m.userId),
-  );
-  excludeIds.add(userId);
+  // 2. UserIds to exclude: self + current team members
+  const excludeIds = (team?.members ?? []).map((m: any) => m.userId);
+  excludeIds.push(userId); // CRITICAL: Never suggest yourself
 
-  // Fetch candidate userIds from discipline Sets — parallel, one round-trip
-  const disciplineMemberArrays = await Promise.all(
-    missingDisciplines.map((d) =>
-      setRedis.smembers(`athletes:discipline:${d}`),
-    ),
-  );
+  // 3. 🚀 THE FIX: Fetch directly from Prisma
+  // This completely bypasses Redis expiration desyncs. It strictly finds onboarded athletes
+  // who are NOT in a team, NOT in your exclude list, and match the missing disciplines.
+  const candidatesFromDb = await prisma.user.findMany({
+    where: {
+      id: { notIn: excludeIds },
+      inTeam: false,
+      is_Onboard: true,
+      athleteProfile: {
+        disciplines: {
+          hasSome: missingDisciplines, // Native Postgres array intersection!
+        },
+      },
+    },
+    include: {
+      athleteProfile: {
+        include: {
+          raceResults: true,
+          achievements: true,
+        },
+      },
+    },
+  });
 
-  // Union across all needed disciplines, deduped, self excluded
-  const candidateIds = new Set<string>();
-  for (const ids of disciplineMemberArrays) {
-    for (const id of ids as string[]) {
-      if (!excludeIds.has(id)) {
-        candidateIds.add(id);
-      }
-    }
-  }
+  // 4. Format the DB results to exactly match the frontend's expected interface
+  const formattedCandidates = candidatesFromDb.map((user) => ({
+    userToken: user.userToken,
+    email: user.email,
+    inTeam: user.inTeam,
+    isOnboard: user.is_Onboard,
+    profileImage: user.profileImage,
+    athleteData: user.athleteProfile,
+  }));
 
-  if (candidateIds.size === 0) return [];
-
-  // Batch fetch individual athlete entries — single pipeline round-trip
-  const pipeline = setRedis.pipeline();
-  for (const id of candidateIds) {
-    pipeline.get(`athletes:user:${id}`);
-  }
-  const results = await pipeline.exec();
-
-  const candidates = (results as any[])
-    .map((r) => {
-      const val = Array.isArray(r) ? r[1] : r;
-      if (!val) return null;
-      return typeof val === "string" ? JSON.parse(val) : val;
-    })
-    .filter((a): a is NonNullable<typeof a> => {
-      if (!a) return false;
-      if (a.inTeam) return false; // already on a team — skip
-      // Must actually have at least one discipline we need
-      const theirDisciplines: string[] = a.athleteData?.disciplines ?? [];
-      return missingDisciplines.some((d) => theirDisciplines.includes(d));
-    });
-
-  // Score, sort descending, take top 6
-  return candidates
+  // 5. Score, sort descending, take top 6
+  return formattedCandidates
     .map((athlete) => ({
       ...athlete,
       matchScore: computeMatchScore(athlete, athleteData, missingDisciplines),
@@ -147,6 +140,7 @@ async function getSuggestedAthletes(
 }
 
 // ─── MAIN ACTION ─────────────────────────────────────────────────────────────
+
 export const getMainDashboardData = catchErrors(
   async (_prevState: ActionResponse): Promise<ActionResponse> => {
     const getUser = await getCurrentUser();
@@ -183,7 +177,6 @@ export const getMainDashboardData = catchErrors(
       dbPromises.push(
         prisma.myTeam
           .findFirst({
-            // ─── UPDATED: Check for Owner OR Member ───
             where: {
               OR: [
                 { ownerId: userId },
